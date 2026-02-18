@@ -45,6 +45,7 @@ function AppContent() {
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [showWorldClock, setShowWorldClock] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(5);
   
   // Load settings and translation
   const { settings } = useSettings();
@@ -341,7 +342,9 @@ function AppContent() {
                 {/* Notification Icon */}
                 <button className="relative p-3 bg-black/30 backdrop-blur-xl border border-blue-400/30 rounded-xl hover:bg-blue-500/20 hover:border-blue-400/50 transition-all group shadow-lg" onClick={() => setShowNotifications(!showNotifications)}>
                   <Bell className="w-6 h-6 text-gray-300 group-hover:text-blue-300 transition-colors" />
-                  <div className="absolute top-2 right-2 w-2.5 h-2.5 bg-purple-500 rounded-full ring-2 ring-black/50 shadow-lg shadow-purple-500/50" />
+                  {unreadNotificationCount > 0 && (
+                    <div className="absolute top-2 right-2 w-2.5 h-2.5 bg-purple-500 rounded-full ring-2 ring-black/50 shadow-lg shadow-purple-500/50" />
+                  )}
                 </button>
 
                 {/* Settings Icon */}
@@ -551,7 +554,8 @@ function AppContent() {
       {/* Notification Panel */}
       <NotificationPanel 
         isOpen={showNotifications} 
-        onClose={() => setShowNotifications(false)} 
+        onClose={() => setShowNotifications(false)}
+        onUnreadCountChange={setUnreadNotificationCount}
       />
 
       {/* User Menu */}

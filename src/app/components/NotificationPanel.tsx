@@ -1,12 +1,13 @@
 import { X, CheckCircle, AlertCircle, Info, Clock } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 interface NotificationPanelProps {
   isOpen: boolean;
   onClose: () => void;
+  onUnreadCountChange?: (count: number) => void;
 }
 
-export function NotificationPanel({ isOpen, onClose }: NotificationPanelProps) {
+export function NotificationPanel({ isOpen, onClose, onUnreadCountChange }: NotificationPanelProps) {
   const [notifications, setNotifications] = useState([
     {
       id: 1,
@@ -71,6 +72,11 @@ export function NotificationPanel({ isOpen, onClose }: NotificationPanelProps) {
   };
 
   const unreadCount = notifications.filter(n => !n.read).length;
+
+  // Notify parent of unread count changes
+  useEffect(() => {
+    onUnreadCountChange?.(unreadCount);
+  }, [unreadCount, onUnreadCountChange]);
 
   if (!isOpen) return null;
 

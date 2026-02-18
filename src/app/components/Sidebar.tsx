@@ -1,6 +1,73 @@
-import { Home, BarChart3, Settings, Users, Activity, Calendar } from 'lucide-react';
-import logo from 'figma:asset/3ca298a21007a50a7e4273fbaceaee5a09caa649.png';
 import { useTranslation } from '../hooks/useTranslation';
+
+// Custom SVG Icons
+const HomeIcon = ({ className }: { className?: string }) => (
+  <svg className={className} width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+    <polyline points="9 22 9 12 15 12 15 22"></polyline>
+  </svg>
+);
+
+const CalendarIcon = ({ className }: { className?: string }) => (
+  <svg className={className} width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+    <line x1="16" y1="2" x2="16" y2="6"></line>
+    <line x1="8" y1="2" x2="8" y2="6"></line>
+    <line x1="3" y1="10" x2="21" y2="10"></line>
+  </svg>
+);
+
+const UsersIcon = ({ className }: { className?: string }) => (
+  <svg className={className} width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+    <circle cx="9" cy="7" r="4"></circle>
+    <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+    <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+  </svg>
+);
+
+const ActivityIcon = ({ className }: { className?: string }) => (
+  <svg className={className} width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+  </svg>
+);
+
+const SettingsIcon = ({ className }: { className?: string }) => (
+  <svg className={className} width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="3"></circle>
+    <path d="M12 1v6m0 6v6m5.196-15.804l-4.242 4.242m-2.828 2.828l-4.242 4.242m15.876 0l-4.242-4.242m-2.828-2.828l-4.242-4.242"></path>
+  </svg>
+);
+
+// Custom SENTRIA Logo SVG
+const SentriaLogo = () => (
+  <svg viewBox="0 0 480 120" className="w-full h-auto" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="sentriaGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stopColor="#d4d5ed" />
+        <stop offset="15%" stopColor="#b8bade" />
+        <stop offset="35%" stopColor="#8b8dc4" />
+        <stop offset="55%" stopColor="#5b5fa8" />
+        <stop offset="75%" stopColor="#3d448f" />
+        <stop offset="100%" stopColor="#1a2570" />
+      </linearGradient>
+    </defs>
+    
+    {/* SENTRIA Text with gradient */}
+    <text 
+      x="240" 
+      y="75" 
+      fontFamily="Arial, Helvetica, sans-serif" 
+      fontSize="72" 
+      fontWeight="700" 
+      textAnchor="middle"
+      letterSpacing="3"
+      fill="url(#sentriaGradient)"
+    >
+      SENTRIA
+    </text>
+  </svg>
+);
 
 interface UserProfile {
   firstName: string;
@@ -23,11 +90,11 @@ export function Sidebar({ activeTab, setActiveTab, userProfile }: SidebarProps) 
   const { t } = useTranslation();
   
   const menuItems = [
-    { id: 'overview', icon: Home, label: t('nav.overview') },
-    { id: 'bookings', icon: Calendar, label: t('nav.bookings') },
-    { id: 'users', icon: Users, label: t('nav.profile') },
-    { id: 'performance', icon: Activity, label: t('nav.analytics') },
-    { id: 'settings', icon: Settings, label: t('nav.settings') },
+    { id: 'overview', icon: HomeIcon, label: t('nav.overview') },
+    { id: 'bookings', icon: CalendarIcon, label: t('nav.bookings') },
+    { id: 'users', icon: UsersIcon, label: t('nav.profile') },
+    { id: 'performance', icon: ActivityIcon, label: t('nav.analytics') },
+    { id: 'settings', icon: SettingsIcon, label: t('nav.settings') },
   ];
 
   return (
@@ -35,11 +102,7 @@ export function Sidebar({ activeTab, setActiveTab, userProfile }: SidebarProps) 
       {/* Logo */}
       <div className="p-4 border-b border-blue-500/20 bg-gradient-to-b from-[#0d1128] to-transparent">
         <div className="flex items-center justify-center">
-          <img 
-            src={logo} 
-            alt="SENTRIA" 
-            className="w-full h-auto object-contain brightness-110"
-          />
+          <SentriaLogo />
         </div>
       </div>
 
