@@ -55,11 +55,11 @@ export function Navigation({ currentPage, onNavigate }: NavigationProps) {
       ]
     },
     { name: "Resources", onClick: () => handleNavClick("resources") },
-    { 
-      name: "Meet Emily", 
-      onClick: () => handleNavClick("emily"),
-      highlight: true
-    },
+    // { 
+    //   name: "Meet Emily", 
+    //   onClick: () => handleNavClick("emily"),
+    //   highlight: true
+    // },
   ];
   
   const handleNavClick = (page: string) => {
