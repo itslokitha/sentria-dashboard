@@ -1,7 +1,7 @@
 
-  # AI Voice Assistant Dashboard NEW 1
+  # AI Voice Assistant Platform NEW 1
 
-  This is a code bundle for AI Voice Assistant Dashboard NEW 1. The original project is available at https://www.figma.com/design/j7flYXiSnXCqxmnMK3NxRW/AI-Voice-Assistant-Dashboard-NEW-1.
+  This is a code bundle for AI Voice Assistant Platform NEW 1. The original project is available at https://www.figma.com/design/oetQ5FQkvWVYiatQif50ET/AI-Voice-Assistant-Platform-NEW-1.
 
   ## Running the code
 
