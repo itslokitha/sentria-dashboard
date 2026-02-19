@@ -1,11 +1,3 @@
-
-  // import { createRoot } from "react-dom/client";
-  // import App from "./App.tsx";
-  // import "./index.css";
-
-  // createRoot(document.getElementById("root")!).render(<App />);
-
-
 // ============================================================
 // SENTRIA — App Router
 // Unifies the dev2 marketing website and dev1 dashboard
