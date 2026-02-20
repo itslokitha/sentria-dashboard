@@ -75,10 +75,10 @@ const cognitoClient = new CognitoIdentityProviderClient({
 });
 
 // ── Fetch user config from our API ───────────────────────────────────────────
-async function fetchUserConfig(accessToken: string): Promise<UserSession> {
+async function fetchUserConfig(idToken: string): Promise<UserSession> {
   const res = await fetch(`${API_BASE_URL}/api/user/config`, {
     headers: {
-      Authorization: `Bearer ${accessToken}`,
+      Authorization: `Bearer ${idToken}`,
       'Content-Type': 'application/json',
     },
   });
@@ -104,7 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
       try {
-        const userSession = await fetchUserConfig(tokens.accessToken);
+        const userSession = await fetchUserConfig(tokens.idToken);
         setSession(userSession);
       } catch (err) {
         console.error('Session restore failed:', err);
@@ -146,7 +146,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       saveTokens(tokens);
 
       // Fetch this user's dashboard config from our API
-      const userSession = await fetchUserConfig(result.AccessToken);
+      const userSession = await fetchUserConfig(result.IdToken);
       setSession(userSession);
     } finally {
       setIsLoading(false);
@@ -198,7 +198,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       };
 
       saveTokens(newTokens);
-      const userSession = await fetchUserConfig(result.AccessToken);
+      const userSession = await fetchUserConfig(result.IdToken || tokens.idToken);
       setSession(userSession);
     } catch (err) {
       console.error('Token refresh failed, logging out:', err);
