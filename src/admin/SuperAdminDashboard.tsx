@@ -12,8 +12,10 @@ import {
   TrendingDown, ArrowUpRight, ArrowDownRight, Shield,
   Database, Server, Zap, Globe, MoreHorizontal, Filter,
   Download, RefreshCw, AlertCircle, X, ChevronDown,
-  Mail, Calendar, Award, Settings, Star
+  Mail, Calendar, Award, Settings, Star, Save, Loader2
 } from 'lucide-react';
+import { useAuth } from '../auth/AuthContext';
+import { API_BASE_URL } from '../auth/cognitoConfig';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 interface Client {
@@ -145,8 +147,227 @@ function PlatformStatCard({ title, value, sub, icon: Icon, trend, change, color 
   );
 }
 
+// ── Edit Client Modal ─────────────────────────────────────────────────────
+interface EditClientForm {
+  clientName: string;
+  industry: string;
+  plan: 'Free' | 'Pro' | 'Enterprise';
+  status: 'active' | 'inactive' | 'pending';
+  adminEmail: string;
+  sheetId: string;
+}
+
+function EditClientModal({ client, onClose, onSaved }: {
+  client: Client;
+  onClose: () => void;
+  onSaved: (updated: Partial<Client>) => void;
+}) {
+  const { getAccessToken } = useAuth();
+  const [form, setForm] = useState<EditClientForm>({
+    clientName: client.name,
+    industry: client.industry,
+    plan: client.plan,
+    status: client.status,
+    adminEmail: client.adminEmail,
+    sheetId: client.sheetId || '',
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      const token = getAccessToken();
+      const res = await fetch(`${API_BASE_URL}/admin/clients/${client.id}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          clientName: form.clientName,
+          industry: form.industry,
+          plan: form.plan,
+          status: form.status,
+          adminEmail: form.adminEmail,
+          dataSource: { sheetId: form.sheetId },
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `Server returned ${res.status}`);
+      }
+
+      setSuccess(true);
+      onSaved({
+        name: form.clientName,
+        industry: form.industry,
+        plan: form.plan,
+        status: form.status,
+        adminEmail: form.adminEmail,
+        sheetId: form.sheetId,
+      });
+      setTimeout(onClose, 1200);
+    } catch (err: any) {
+      setError(err.message || 'Failed to save. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const field = (
+    label: string,
+    key: keyof EditClientForm,
+    type: 'text' | 'email' = 'text',
+    hint?: string
+  ) => (
+    <div>
+      <label className="text-gray-400 text-sm mb-1.5 block">{label}</label>
+      <input
+        type={type}
+        value={form[key]}
+        onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
+        className="w-full bg-white/[0.05] border border-white/[0.1] rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-blue-500/60 placeholder-gray-600 transition-colors"
+      />
+      {hint && <p className="text-gray-600 text-xs mt-1">{hint}</p>}
+    </div>
+  );
+
+  return (
+    <div className="fixed inset-0 z-60 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-lg bg-[#080d1e] border border-white/[0.1] rounded-2xl shadow-2xl overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-5 border-b border-white/[0.08]">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 bg-gradient-to-br from-blue-600 to-purple-600 rounded-xl flex items-center justify-center text-white font-bold text-sm">
+              {client.name[0]}
+            </div>
+            <div>
+              <h3 className="text-white font-semibold">Edit Configuration</h3>
+              <p className="text-gray-500 text-xs">{client.name}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-gray-500 hover:text-white p-2 rounded-xl hover:bg-white/[0.05] transition-colors">
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Form */}
+        <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+          {field('Company Name', 'clientName')}
+          {field('Industry', 'industry')}
+          {field('Admin Email', 'adminEmail', 'email')}
+
+          {/* Google Sheet ID — highlighted */}
+          <div>
+            <label className="text-gray-400 text-sm mb-1.5 block">Google Sheet ID</label>
+            <div className="relative">
+              <input
+                type="text"
+                value={form.sheetId}
+                onChange={e => setForm(f => ({ ...f, sheetId: e.target.value }))}
+                placeholder="1A9Zt_S1PhYcwRRy7jeZ4Kvj1dTSE6PCIOWjSNnwv61M"
+                className="w-full bg-blue-500/[0.08] border border-blue-500/30 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-blue-500/70 placeholder-gray-600 transition-colors font-mono"
+              />
+            </div>
+            <p className="text-gray-600 text-xs mt-1">
+              Found in the Google Sheets URL: /spreadsheets/d/<span className="text-blue-500">SHEET_ID</span>/edit
+            </p>
+          </div>
+
+          {/* Plan */}
+          <div>
+            <label className="text-gray-400 text-sm mb-1.5 block">Plan</label>
+            <div className="grid grid-cols-3 gap-2">
+              {(['Free', 'Pro', 'Enterprise'] as const).map(p => (
+                <button
+                  key={p}
+                  onClick={() => setForm(f => ({ ...f, plan: p }))}
+                  className={`py-2.5 rounded-xl text-sm font-medium transition-all ${
+                    form.plan === p
+                      ? p === 'Free' ? 'bg-gray-600 text-white'
+                        : p === 'Pro' ? 'bg-blue-600 text-white'
+                        : 'bg-purple-600 text-white'
+                      : 'bg-white/[0.05] border border-white/[0.08] text-gray-400 hover:text-white'
+                  }`}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Status */}
+          <div>
+            <label className="text-gray-400 text-sm mb-1.5 block">Status</label>
+            <div className="grid grid-cols-3 gap-2">
+              {(['active', 'inactive', 'pending'] as const).map(s => (
+                <button
+                  key={s}
+                  onClick={() => setForm(f => ({ ...f, status: s }))}
+                  className={`py-2.5 rounded-xl text-sm font-medium capitalize transition-all ${
+                    form.status === s
+                      ? s === 'active' ? 'bg-emerald-600 text-white'
+                        : s === 'inactive' ? 'bg-red-600 text-white'
+                        : 'bg-amber-600 text-white'
+                      : 'bg-white/[0.05] border border-white/[0.08] text-gray-400 hover:text-white'
+                  }`}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Error */}
+          {error && (
+            <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/25 rounded-xl px-4 py-3">
+              <AlertCircle size={15} className="text-red-400 shrink-0" />
+              <p className="text-red-400 text-sm">{error}</p>
+            </div>
+          )}
+
+          {/* Success */}
+          {success && (
+            <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/25 rounded-xl px-4 py-3">
+              <CheckCircle size={15} className="text-emerald-400 shrink-0" />
+              <p className="text-emerald-400 text-sm">Saved successfully!</p>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex gap-3 px-6 py-4 border-t border-white/[0.08]">
+          <button
+            onClick={handleSave}
+            disabled={saving || success}
+            className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 disabled:cursor-not-allowed text-white py-3 rounded-xl text-sm font-medium transition-colors"
+          >
+            {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+            {saving ? 'Saving…' : success ? 'Saved!' : 'Save Changes'}
+          </button>
+          <button
+            onClick={onClose}
+            className="px-5 bg-white/[0.05] hover:bg-white/[0.08] text-gray-300 rounded-xl text-sm transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Client Detail Side Panel ─────────────────────────────────────────────
-function ClientDetailPanel({ client, onClose }: { client: Client; onClose: () => void }) {
+function ClientDetailPanel({ client, onClose, onEdit }: {
+  client: Client;
+  onClose: () => void;
+  onEdit: () => void;
+}) {
   const users = MOCK_USERS.filter(u => u.clientId === client.id);
   return (
     <div className="fixed inset-0 z-50 flex">
@@ -226,7 +447,8 @@ function ClientDetailPanel({ client, onClose }: { client: Client; onClose: () =>
           {/* Actions */}
           <div className="space-y-2">
             <h4 className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-3">Actions</h4>
-            <button className="w-full flex items-center gap-3 px-4 py-3 bg-blue-600/15 border border-blue-500/25 rounded-xl text-blue-400 text-sm hover:bg-blue-600/25 transition-colors">
+            <button onClick={onEdit}
+              className="w-full flex items-center gap-3 px-4 py-3 bg-blue-600/15 border border-blue-500/25 rounded-xl text-blue-400 text-sm hover:bg-blue-600/25 transition-colors">
               <Edit2 size={15} /> Edit Configuration
             </button>
             <button className="w-full flex items-center gap-3 px-4 py-3 bg-white/[0.04] border border-white/[0.08] rounded-xl text-gray-300 text-sm hover:bg-white/[0.06] transition-colors">
@@ -363,19 +585,40 @@ function ClientsTab() {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'all' | 'active' | 'inactive' | 'pending'>('all');
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+  const [editingClient, setEditingClient] = useState<Client | null>(null);
+  const [clients, setClients] = useState(MOCK_CLIENTS);
+
+  const handleSaved = (clientId: string, updated: Partial<Client>) => {
+    setClients(prev => prev.map(c => c.id === clientId ? { ...c, ...updated } : c));
+    // Also update selectedClient so the detail panel reflects changes
+    setSelectedClient(prev => prev?.id === clientId ? { ...prev, ...updated } : prev);
+  };
 
   const filtered = useMemo(() =>
-    MOCK_CLIENTS.filter(c => {
+    clients.filter(c => {
       const matchSearch = !search || c.name.toLowerCase().includes(search.toLowerCase()) || c.industry.toLowerCase().includes(search.toLowerCase());
       const matchFilter = filter === 'all' || c.status === filter;
       return matchSearch && matchFilter;
     }),
-    [search, filter]
+    [clients, search, filter]
   );
 
   return (
     <div className="space-y-6">
-      {selectedClient && <ClientDetailPanel client={selectedClient} onClose={() => setSelectedClient(null)} />}
+      {selectedClient && (
+        <ClientDetailPanel
+          client={selectedClient}
+          onClose={() => setSelectedClient(null)}
+          onEdit={() => { setEditingClient(selectedClient); }}
+        />
+      )}
+      {editingClient && (
+        <EditClientModal
+          client={editingClient}
+          onClose={() => setEditingClient(null)}
+          onSaved={(updated) => handleSaved(editingClient.id, updated)}
+        />
+      )}
 
       <div className="flex items-center justify-between">
         <div>
@@ -390,10 +633,10 @@ function ClientsTab() {
       {/* Summary cards */}
       <div className="grid grid-cols-4 gap-4">
         {[
-          { label: 'Total', count: MOCK_CLIENTS.length, color: 'text-white' },
-          { label: 'Active', count: MOCK_CLIENTS.filter(c => c.status === 'active').length, color: 'text-emerald-400' },
-          { label: 'Pending', count: MOCK_CLIENTS.filter(c => c.status === 'pending').length, color: 'text-amber-400' },
-          { label: 'Inactive', count: MOCK_CLIENTS.filter(c => c.status === 'inactive').length, color: 'text-red-400' },
+          { label: 'Total', count: clients.length, color: 'text-white' },
+          { label: 'Active', count: clients.filter(c => c.status === 'active').length, color: 'text-emerald-400' },
+          { label: 'Pending', count: clients.filter(c => c.status === 'pending').length, color: 'text-amber-400' },
+          { label: 'Inactive', count: clients.filter(c => c.status === 'inactive').length, color: 'text-red-400' },
         ].map(({ label, count, color }) => (
           <div key={label} className="bg-white/[0.03] border border-white/[0.08] rounded-xl p-4 text-center">
             <p className={`text-2xl font-bold ${color}`}>{count}</p>
