@@ -145,6 +145,7 @@ const SECONDARY_FIELDS = [
 ];
 
 interface TabMapping {
+  fieldLabels: Record<string, string>;  // stdKey → custom display label
   tabName: string;
   label:   string;
   role:    'primary' | 'secondary';
@@ -190,7 +191,7 @@ function EditClientModal({ client, onClose, onSaved }: {
         setMapping({ tabs: json.tabs.map((t: any, i: number) => ({
           tabName: t.tabName, label: t.tabName,
           role: i === 0 ? 'primary' : 'secondary',
-          columns: {},
+          columns: {}, fieldLabels: {},
         }))});
       }
     } catch(e: any) { setSheetError(e.message || 'Failed to load sheet.'); }
@@ -204,6 +205,8 @@ function EditClientModal({ client, onClose, onSaved }: {
     setMapping(m => ({ tabs: m.tabs.map(t => t.tabName === tabName ? { ...t, role } : t) }));
   const setTabLabel = (tabName: string, label: string) =>
     setMapping(m => ({ tabs: m.tabs.map(t => t.tabName === tabName ? { ...t, label } : t) }));
+  const setFieldLabel = (tabName: string, stdKey: string, fieldLabel: string) =>
+    setMapping(m => ({ tabs: m.tabs.map(t => t.tabName === tabName ? { ...t, fieldLabels: { ...t.fieldLabels, [stdKey]: fieldLabel } } : t) }));
 
   const save = async () => {
     setSaving(true); setError(null);
@@ -348,13 +351,18 @@ function EditClientModal({ client, onClose, onSaved }: {
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       {fields.map(({key, label, hint})=>(
-                        <div key={key}>
-                          <label className="text-gray-400 text-xs mb-1 block font-medium">{label}</label>
+                        <div key={key} className="bg-white/[0.02] border border-white/[0.05] rounded-xl p-3 space-y-2">
+                          <input
+                            value={tab.fieldLabels?.[key] ?? label}
+                            onChange={e=>setFieldLabel(tab.tabName, key, e.target.value)}
+                            className="w-full bg-transparent border-b border-white/[0.1] pb-1 text-white text-xs font-semibold outline-none focus:border-blue-500/60 placeholder-gray-600"
+                            placeholder={label}
+                          />
                           <select value={tab.columns[key]||''} onChange={e=>setColMapping(tab.tabName, key, e.target.value)} className={selectCls}>
                             <option value="" className="bg-[#0d1428]">— not mapped —</option>
                             {colOptions.map(col=><option key={col} value={col} className="bg-[#0d1428]">{col}</option>)}
                           </select>
-                          <p className="text-gray-600 text-xs mt-0.5">{hint}</p>
+                          <p className="text-gray-600 text-xs">{hint}</p>
                         </div>
                       ))}
                     </div>
