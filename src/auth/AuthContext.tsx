@@ -74,20 +74,58 @@ const cognitoClient = new CognitoIdentityProviderClient({
   region: cognitoConfig.region,
 });
 
-// ── Fetch user config from our API ───────────────────────────────────────────
-async function fetchUserConfig(idToken: string): Promise<UserSession> {
-  const res = await fetch(`${API_BASE_URL}/api/user/config`, {
-    headers: {
-      Authorization: `Bearer ${idToken}`,
-      'Content-Type': 'application/json',
-    },
-  });
+// ── Parse JWT claims from ID token ───────────────────────────────────────────
+function parseJwtClaims(token: string): Record<string, any> {
+  try {
+    const payload = token.split('.')[1];
+    return JSON.parse(atob(payload));
+  } catch {
+    return {};
+  }
+}
 
-  if (!res.ok) {
-    throw new Error(`Failed to fetch user config: ${res.status}`);
+// ── Build minimal session from JWT when API is unavailable ──────────────────
+function buildFallbackSession(idToken: string): UserSession {
+  const claims = parseJwtClaims(idToken);
+  const groups: string[] = claims['cognito:groups'] || [];
+  const role = groups.includes('super-admin') ? 'super-admin'
+    : groups.includes('client-admin') ? 'client-admin'
+    : 'client-user';
+
+  return {
+    user: {
+      userId: claims.sub || '',
+      email: claims.email || '',
+      firstName: claims.given_name || claims.email?.split('@')[0] || 'User',
+      lastName: claims.family_name || '',
+      clientId: claims['custom:clientId'] || 'unknown',
+      role,
+      jobTitle: '',
+    },
+    config: DEFAULT_DASHBOARD_CONFIG,
+  };
+}
+
+// ── Fetch user config from our API (with JWT fallback) ───────────────────────
+async function fetchUserConfig(idToken: string): Promise<UserSession> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/user/config`, {
+      headers: {
+        Authorization: `Bearer ${idToken}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    if (res.ok) {
+      return res.json() as Promise<UserSession>;
+    }
+    // API returned error — fall through to JWT fallback
+    console.warn(`API returned ${res.status}, using JWT fallback`);
+  } catch (err) {
+    // Network/CORS error — fall through to JWT fallback
+    console.warn('API unreachable, using JWT fallback:', err);
   }
 
-  return res.json() as Promise<UserSession>;
+  return buildFallbackSession(idToken);
 }
 
 // ── Provider ─────────────────────────────────────────────────────────────────
