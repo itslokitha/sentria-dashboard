@@ -495,10 +495,29 @@ function AddUserModal({ clients, onClose, onCreated }: {
 }
 
 // ── Client Detail Side Panel ──────────────────────────────────────────────
-function ClientDetailPanel({ client, onClose, onEdit, onToggleStatus, toggling }: {
+function ClientDetailPanel({ client, onClose, onEdit, onToggleStatus, toggling, onDeleted }: {
   client: Client; onClose: () => void; onEdit: () => void;
   onToggleStatus: () => void; toggling: boolean;
+  onDeleted: (id: string) => void;
 }) {
+  const { getIdToken } = useAuth();
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string|null>(null);
+
+  const handleDelete = async () => {
+    setDeleting(true); setDeleteError(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/clients/${client.id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${getIdToken()}` },
+      });
+      if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.error||`Error ${res.status}`); }
+      onDeleted(client.id);
+      onClose();
+    } catch(e:any) { setDeleteError(e.message||'Failed to delete.'); setDeleting(false); }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex">
       <div className="flex-1 bg-black/50 backdrop-blur-sm" onClick={onClose}/>
@@ -532,6 +551,7 @@ function ClientDetailPanel({ client, onClose, onEdit, onToggleStatus, toggling }
               </div>
             ))}
           </div>
+
           <div className="space-y-2">
             <h4 className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-3">Actions</h4>
             <button onClick={onEdit}
@@ -547,6 +567,36 @@ function ClientDetailPanel({ client, onClose, onEdit, onToggleStatus, toggling }
               {toggling ? <Loader2 size={15} className="animate-spin"/> : client.status==='active' ? <XCircle size={15}/> : <CheckCircle size={15}/>}
               {toggling ? 'Updating…' : client.status==='active' ? 'Deactivate Client' : 'Activate Client'}
             </button>
+
+            {/* Delete — shows confirmation before executing */}
+            {!confirmDelete ? (
+              <button onClick={()=>setConfirmDelete(true)}
+                className="w-full flex items-center gap-3 px-4 py-3 bg-white/[0.03] border border-white/[0.08] rounded-xl text-gray-500 text-sm hover:bg-red-500/10 hover:border-red-500/20 hover:text-red-400 transition-colors mt-2">
+                <Trash2 size={15}/> Delete Client Permanently
+              </button>
+            ) : (
+              <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 mt-2 space-y-3">
+                <div className="flex items-start gap-2">
+                  <AlertCircle size={16} className="text-red-400 shrink-0 mt-0.5"/>
+                  <div>
+                    <p className="text-red-300 text-sm font-semibold">Delete "{client.name}"?</p>
+                    <p className="text-red-400/70 text-xs mt-0.5">This permanently removes the client config from DynamoDB. This cannot be undone.</p>
+                  </div>
+                </div>
+                {deleteError && <p className="text-red-400 text-xs">{deleteError}</p>}
+                <div className="flex gap-2">
+                  <button onClick={handleDelete} disabled={deleting}
+                    className="flex-1 flex items-center justify-center gap-2 bg-red-600 hover:bg-red-500 disabled:opacity-60 text-white py-2.5 rounded-xl text-sm font-medium transition-colors">
+                    {deleting ? <Loader2 size={14} className="animate-spin"/> : <Trash2 size={14}/>}
+                    {deleting ? 'Deleting…' : 'Yes, Delete'}
+                  </button>
+                  <button onClick={()=>{ setConfirmDelete(false); setDeleteError(null); }}
+                    className="px-4 bg-white/[0.05] hover:bg-white/[0.08] text-gray-300 rounded-xl text-sm transition-colors">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -649,7 +699,8 @@ function ClientsTab() {
     <div className="space-y-6">
       {selectedClient && <ClientDetailPanel client={selectedClient} onClose={()=>setSelectedClient(null)}
         onEdit={()=>setEditingClient(selectedClient)}
-        onToggleStatus={()=>handleToggle(selectedClient)} toggling={togglingId===selectedClient.id}/>}
+        onToggleStatus={()=>handleToggle(selectedClient)} toggling={togglingId===selectedClient.id}
+        onDeleted={id=>{ setClients(p=>p.filter(c=>c.id!==id)); setSelectedClient(null); }}/>}
       {editingClient && <EditClientModal client={editingClient} onClose={()=>setEditingClient(null)}
         onSaved={u=>handleSaved(editingClient.id,u)}/>}
       {showAdd && <AddClientModal onClose={()=>setShowAdd(false)} onCreated={c=>setClients(p=>[c,...p])}/>}
