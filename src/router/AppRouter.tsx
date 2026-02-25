@@ -1,203 +1,163 @@
 // ============================================================
 // SENTRIA — App Router
-// Unifies the dev2 marketing website and dev1 dashboard
-// under React Router v7. Public routes serve the website.
-// /dashboard/* routes are protected and require auth.
-// /admin/* routes are super-admin only.
+// Role-based routing:
+//   super-admin    → /admin     → SuperAdminDashboard
+//   client-admin   → /dashboard → ClientAdminDashboard
+//   client-user    → /dashboard → DashboardApp (existing)
+//   unauthenticated→ /login
 // ============================================================
 
-import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router';
-import { AuthProvider } from '../auth/AuthContext';
-import { ProtectedRoute, AdminRoute } from '../auth/ProtectedRoute';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useAuth } from '../auth/AuthContext';
+import { SuperAdminDashboard } from '../admin/SuperAdminDashboard';
+import { ClientAdminDashboard } from '../app/ClientAdminDashboard';
 
-// ── Page-name → URL-path mapping ────────────────────────────────────────────
-const PAGE_ROUTES: Record<string, string> = {
-  'home': '/',
-  'platform': '/platform',
-  'platform-overview': '/platform/overview',
-  'voice-technology': '/platform/voice-technology',
-  'solutions': '/solutions',
-  'pricing': '/pricing',
-  'resources': '/resources',
-  'company': '/company',
-  'about': '/about',
-  'careers': '/careers',
-  'contact': '/contact',
-  'sales': '/contact',
-  'emily': '/emily',
-  'industries': '/industries',
-  'healthcare': '/industries/healthcare',
-  'finance': '/industries/finance',
-  'retail': '/industries/retail',
-  'realestate': '/industries/real-estate',
-  'real-estate': '/industries/real-estate',
-  'hospitality': '/industries/hospitality',
-  'professional': '/industries/professional',
-  'insurance': '/industries/insurance',
-  'automotive': '/industries/automotive',
-  'education': '/industries/education',
-  'logistics': '/industries/logistics',
-  'telecom': '/industries/telecom',
-  'telecommunications': '/industries/telecom',
-  'construction': '/industries/construction',
-  'privacy': '/privacy',
-  'terms': '/terms',
-  'security': '/security',
-  'compliance': '/compliance',
-  'integrations': '/integrations',
-  'partners': '/partners',
-  'login': '/login',
-};
+// ── Lazy-import the original client-user dashboard ────────────────────────
+// This keeps bundle size down. It's the existing DashboardApp from dev1.
+import { lazy, Suspense } from 'react';
+const DashboardApp = lazy(() => import('../app/DashboardApp'));
 
-// ── dev2: Marketing Website Pages ────────────────────────────────────────────
-import { Navigation } from '../components/Navigation';
-import { Footer } from '../components/Footer';
-import { ScrollToTop } from '../components/ScrollToTop';
-import { LoadingScreen } from '../components/LoadingScreen';
-import { HomePage } from '../pages/HomePage';
-import { ProductsPage } from '../pages/ProductsPage';
-import { SolutionsPage } from '../pages/SolutionsPage';
-import { PlatformOverviewPage } from '../pages/PlatformOverviewPage';
-import { VoiceTechnologyPage } from '../pages/VoiceTechnologyPage';
-import { PricingPage } from '../pages/PricingPage';
-import { ResourcesPage } from '../pages/ResourcesPage';
-import { CompanyPage } from '../pages/CompanyPage';
-import { AboutPage } from '../pages/AboutPage';
-import { CareersPage } from '../pages/CareersPage';
-import { ContactPage } from '../pages/ContactPage';
-import { ProjectEmilyPage } from '../pages/ProjectEmilyPage';
-import { IndustriesPage } from '../pages/IndustriesPage';
-import { HealthcarePage } from '../pages/HealthcarePage';
-import { FinancePage } from '../pages/FinancePage';
-import { RetailPage } from '../pages/RetailPage';
-import { RealEstatePage } from '../pages/RealEstatePage';
-import { HospitalityPage } from '../pages/HospitalityPage';
-import { ProfessionalPage } from '../pages/ProfessionalPage';
-import { InsurancePage } from '../pages/InsurancePage';
-import { AutomotivePage } from '../pages/AutomotivePage';
-import { EducationPage } from '../pages/EducationPage';
-import { LogisticsPage } from '../pages/LogisticsPage';
-import { TelecomPage } from '../pages/TelecomPage';
-import { ConstructionPage } from '../pages/ConstructionPage';
-import { PrivacyPage } from '../pages/PrivacyPage';
-import { TermsPage } from '../pages/TermsPage';
-import { SecurityPage } from '../pages/SecurityPage';
-import { CompliancePage } from '../pages/CompliancePage';
-import { IntegrationsPage } from '../pages/IntegrationsPage';
-import { PartnersPage } from '../pages/PartnersPage';
-import { LoginPage } from '../pages/LoginPage';
-import { useState } from 'react';
-
-// ── dev1: Dashboard ───────────────────────────────────────────────────────────
-import { DashboardApp } from '../app/DashboardApp';
-
-// ── Admin Panel ───────────────────────────────────────────────────────────────
-import { AdminPanel } from '../admin/AdminPanel';
-
-// ── Wrapper that injects a working onNavigate into page components ────────────
-function NavigablePage({ Component, ...rest }: { Component: React.ComponentType<any> }) {
-  const navigate = useNavigate();
-  const handleNavigate = (page: string) => {
-    const path = PAGE_ROUTES[page] || `/${page}`;
-    navigate(path);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-  return <Component onNavigate={handleNavigate} {...rest} />;
-}
-
-// ── Website layout wrapper (Navigation + Footer) ──────────────────────────────
-function WebsiteLayout({ children }: { children: React.ReactNode }) {
-  const navigate = useNavigate();
-  const handleNavigate = (page: string) => {
-    const path = PAGE_ROUTES[page] || `/${page}`;
-    navigate(path);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
+// ── Full-screen loading state ─────────────────────────────────────────────
+function SentriaLoader() {
   return (
-    <div className="min-h-screen bg-[#070A12] text-white">
-      <Navigation currentPage="" onNavigate={handleNavigate} />
-      <main>{children}</main>
-      <Footer onNavigate={handleNavigate} />
-      <ScrollToTop />
+    <div className="fixed inset-0 bg-[#070A12] flex flex-col items-center justify-center gap-4">
+      <svg viewBox="0 0 480 120" className="w-48 h-auto animate-pulse" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="loaderGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="#d4d5ed" />
+            <stop offset="50%" stopColor="#5b5fa8" />
+            <stop offset="100%" stopColor="#1a2570" />
+          </linearGradient>
+        </defs>
+        <text x="240" y="75" fontFamily="Arial, sans-serif" fontSize="72" fontWeight="700"
+          textAnchor="middle" letterSpacing="3" fill="url(#loaderGrad)">SENTRIA</text>
+      </svg>
+      <div className="flex gap-1.5">
+        {[0, 1, 2].map(i => (
+          <div key={i} className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce"
+            style={{ animationDelay: `${i * 0.15}s` }} />
+        ))}
+      </div>
     </div>
   );
 }
 
-// ── Root App ──────────────────────────────────────────────────────────────────
-export function AppRouter() {
-  const [showLoading, setShowLoading] = useState(true);
+// ── Route guard: redirects to login if not authenticated ─────────────────
+function RequireAuth({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, isLoading } = useAuth();
+  if (isLoading) return <SentriaLoader />;
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  return <>{children}</>;
+}
 
+// ── Smart /dashboard redirect based on role ───────────────────────────────
+function RoleBasedDashboard() {
+  const { session, logout } = useAuth();
+
+  if (!session) return <Navigate to="/login" replace />;
+
+  const role = session.user?.role || 'client-user';
+  const userName = `${session.user?.firstName || ''} ${session.user?.lastName || ''}`.trim() || 'User';
+  const userEmail = session.user?.email || '';
+  const clientName = session.config?.clientName || 'Your Company';
+  const sheetId = session.config?.dataSource?.sheetId || '';
+
+  if (role === 'super-admin') {
+    return (
+      <SuperAdminDashboard
+        userEmail={userEmail}
+        userName={userName}
+        onLogout={logout}
+      />
+    );
+  }
+
+  if (role === 'client-admin') {
+    return (
+      <ClientAdminDashboard
+        userEmail={userEmail}
+        userName={userName}
+        clientName={clientName}
+        sheetId={sheetId}
+        onLogout={logout}
+      />
+    );
+  }
+
+  // Default: client-user gets the original DashboardApp
+  return (
+    <Suspense fallback={<SentriaLoader />}>
+      <DashboardApp />
+    </Suspense>
+  );
+}
+
+// ── Login page ────────────────────────────────────────────────────────────
+// Imported from wherever it lives in your project — adjust path if needed.
+import { LoginPage } from '../auth/LoginPage';
+
+// ── Root router ────────────────────────────────────────────────────────────
+export function AppRouter() {
   return (
     <BrowserRouter>
-      <AuthProvider>
-        {showLoading && <LoadingScreen onComplete={() => setShowLoading(false)} />}
-        <Routes>
+      <Routes>
+        {/* Public */}
+        <Route path="/login" element={<PublicLoginRoute />} />
 
-          {/* ── Public Website Routes ───────────────────────────────────── */}
-          <Route path="/" element={<WebsiteLayout><NavigablePage Component={HomePage} /></WebsiteLayout>} />
-          <Route path="/platform" element={<WebsiteLayout><ProductsPage /></WebsiteLayout>} />
-          <Route path="/platform/overview" element={<WebsiteLayout><NavigablePage Component={PlatformOverviewPage} /></WebsiteLayout>} />
-          <Route path="/platform/voice-technology" element={<WebsiteLayout><NavigablePage Component={VoiceTechnologyPage} /></WebsiteLayout>} />
-          <Route path="/solutions" element={<WebsiteLayout><NavigablePage Component={SolutionsPage} /></WebsiteLayout>} />
-          <Route path="/pricing" element={<WebsiteLayout><NavigablePage Component={PricingPage} /></WebsiteLayout>} />
-          <Route path="/resources" element={<WebsiteLayout><ResourcesPage /></WebsiteLayout>} />
-          <Route path="/company" element={<WebsiteLayout><CompanyPage /></WebsiteLayout>} />
-          <Route path="/about" element={<WebsiteLayout><NavigablePage Component={AboutPage} /></WebsiteLayout>} />
-          <Route path="/careers" element={<WebsiteLayout><NavigablePage Component={CareersPage} /></WebsiteLayout>} />
-          <Route path="/contact" element={<WebsiteLayout><NavigablePage Component={ContactPage} /></WebsiteLayout>} />
-          <Route path="/emily" element={<WebsiteLayout><NavigablePage Component={ProjectEmilyPage} /></WebsiteLayout>} />
-          <Route path="/integrations" element={<WebsiteLayout><NavigablePage Component={IntegrationsPage} /></WebsiteLayout>} />
-          <Route path="/partners" element={<WebsiteLayout><PartnersPage /></WebsiteLayout>} />
+        {/* Protected — role-based rendering */}
+        <Route
+          path="/dashboard"
+          element={
+            <RequireAuth>
+              <RoleBasedDashboard />
+            </RequireAuth>
+          }
+        />
 
-          {/* Industries */}
-          <Route path="/industries" element={<WebsiteLayout><NavigablePage Component={IndustriesPage} /></WebsiteLayout>} />
-          <Route path="/industries/healthcare" element={<WebsiteLayout><NavigablePage Component={HealthcarePage} /></WebsiteLayout>} />
-          <Route path="/industries/finance" element={<WebsiteLayout><NavigablePage Component={FinancePage} /></WebsiteLayout>} />
-          <Route path="/industries/retail" element={<WebsiteLayout><NavigablePage Component={RetailPage} /></WebsiteLayout>} />
-          <Route path="/industries/real-estate" element={<WebsiteLayout><NavigablePage Component={RealEstatePage} /></WebsiteLayout>} />
-          <Route path="/industries/hospitality" element={<WebsiteLayout><NavigablePage Component={HospitalityPage} /></WebsiteLayout>} />
-          <Route path="/industries/professional" element={<WebsiteLayout><NavigablePage Component={ProfessionalPage} /></WebsiteLayout>} />
-          <Route path="/industries/insurance" element={<WebsiteLayout><NavigablePage Component={InsurancePage} /></WebsiteLayout>} />
-          <Route path="/industries/automotive" element={<WebsiteLayout><NavigablePage Component={AutomotivePage} /></WebsiteLayout>} />
-          <Route path="/industries/education" element={<WebsiteLayout><NavigablePage Component={EducationPage} /></WebsiteLayout>} />
-          <Route path="/industries/logistics" element={<WebsiteLayout><NavigablePage Component={LogisticsPage} /></WebsiteLayout>} />
-          <Route path="/industries/telecom" element={<WebsiteLayout><NavigablePage Component={TelecomPage} /></WebsiteLayout>} />
-          <Route path="/industries/construction" element={<WebsiteLayout><NavigablePage Component={ConstructionPage} /></WebsiteLayout>} />
+        {/* /admin alias — super-admin only, redirects others to /dashboard */}
+        <Route
+          path="/admin"
+          element={
+            <RequireAuth>
+              <AdminOnlyRoute />
+            </RequireAuth>
+          }
+        />
 
-          {/* Legal */}
-          <Route path="/privacy" element={<WebsiteLayout><PrivacyPage /></WebsiteLayout>} />
-          <Route path="/terms" element={<WebsiteLayout><TermsPage /></WebsiteLayout>} />
-          <Route path="/security" element={<WebsiteLayout><SecurityPage /></WebsiteLayout>} />
-          <Route path="/compliance" element={<WebsiteLayout><CompliancePage /></WebsiteLayout>} />
-
-          {/* ── Auth Route ──────────────────────────────────────────────── */}
-          <Route path="/login" element={<NavigablePage Component={LoginPage} />} />
-
-          {/* ── Protected Dashboard Routes ──────────────────────────────── */}
-          <Route
-            path="/dashboard/*"
-            element={
-              <ProtectedRoute>
-                <DashboardApp />
-              </ProtectedRoute>
-            }
-          />
-
-          {/* ── Protected Admin Routes ──────────────────────────────────── */}
-          <Route
-            path="/admin/*"
-            element={
-              <AdminRoute>
-                <AdminPanel />
-              </AdminRoute>
-            }
-          />
-
-          {/* ── Fallback ────────────────────────────────────────────────── */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-
-        </Routes>
-      </AuthProvider>
+        {/* Default redirect */}
+        <Route path="/" element={<DefaultRedirect />} />
+        <Route path="*" element={<DefaultRedirect />} />
+      </Routes>
     </BrowserRouter>
+  );
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function DefaultRedirect() {
+  const { isAuthenticated, isLoading, session } = useAuth();
+  if (isLoading) return <SentriaLoader />;
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  const role = session?.user?.role;
+  return <Navigate to="/dashboard" replace />;
+}
+
+function PublicLoginRoute() {
+  const { isAuthenticated, isLoading, session } = useAuth();
+  if (isLoading) return <SentriaLoader />;
+  if (isAuthenticated) return <Navigate to="/dashboard" replace />;
+  return <LoginPage />;
+}
+
+function AdminOnlyRoute() {
+  const { session, logout } = useAuth();
+  if (!session) return <Navigate to="/login" replace />;
+  if (session.user?.role !== 'super-admin') return <Navigate to="/dashboard" replace />;
+  const userName = `${session.user?.firstName || ''} ${session.user?.lastName || ''}`.trim() || 'Admin';
+  return (
+    <SuperAdminDashboard
+      userEmail={session.user?.email || ''}
+      userName={userName}
+      onLogout={logout}
+    />
   );
 }
