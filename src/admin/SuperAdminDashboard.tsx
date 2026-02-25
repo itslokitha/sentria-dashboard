@@ -12,7 +12,7 @@ import {
   ArrowUpRight, ArrowDownRight, Shield,
   Database, Server, Zap, Globe,
   AlertCircle, X,
-  Save, Loader2
+  Save, Loader2, RefreshCw
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { API_BASE_URL } from '../auth/cognitoConfig';
@@ -118,9 +118,43 @@ function StatCard({ title, value, sub, icon: Icon, trend, change, color }: {
   );
 }
 
-// ── Edit Client Modal ─────────────────────────────────────────────────────
-// Includes a full Data Mapping section so super-admin can configure
-// which Sheet column maps to which standard field for each client.
+// ── Edit Client Modal (Dynamic Data Mapping) ─────────────────────────────
+// Standard fields the dashboard understands — applies to ANY industry
+const STANDARD_FIELDS = [
+  { key: 'id',          label: 'Unique ID',         hint: 'e.g. SlotID, BookingID, CaseID' },
+  { key: 'date',        label: 'Date',               hint: 'e.g. Date, AppointmentDate, BookingDate' },
+  { key: 'time',        label: 'Time',               hint: 'e.g. Time, StartTime' },
+  { key: 'duration',    label: 'Duration',           hint: 'e.g. Duration_Min, Length' },
+  { key: 'status',      label: 'Status',             hint: 'e.g. Status, State, Outcome' },
+  { key: 'type',        label: 'Type / Category',    hint: 'e.g. Type, ServiceType, Category' },
+  { key: 'doctor',      label: 'Assigned To',        hint: 'e.g. Doctor, Agent, Advisor, StaffName' },
+  { key: 'patientId',   label: 'Record ID (link)',   hint: 'Links to secondary tab e.g. PatientID, CustomerID' },
+  { key: 'patientName', label: 'Name (direct)',      hint: 'If name is directly in this tab' },
+  { key: 'notes',       label: 'Notes',              hint: 'e.g. Notes, Comments, Remarks' },
+];
+
+const SECONDARY_FIELDS = [
+  { key: 'id',        label: 'Unique ID',     hint: 'Must match the Record ID link field above' },
+  { key: 'firstName', label: 'First Name',    hint: 'e.g. FirstName, GivenName' },
+  { key: 'lastName',  label: 'Last Name',     hint: 'e.g. LastName, Surname' },
+  { key: 'phone',     label: 'Phone',         hint: 'e.g. Phone, Mobile, Contact' },
+  { key: 'email',     label: 'Email',         hint: 'e.g. Email, EmailAddress' },
+  { key: 'dob',       label: 'Date of Birth', hint: 'e.g. DOB, BirthDate' },
+  { key: 'flag',      label: 'Flag / Alert',  hint: 'e.g. Flag, Alert, Tag' },
+  { key: 'lastVisit', label: 'Last Visit',    hint: 'e.g. LastVisit, LastSeen' },
+];
+
+interface TabMapping {
+  tabName: string;
+  label:   string;
+  role:    'primary' | 'secondary';
+  columns: Record<string, string>;
+}
+
+interface ColumnMapping {
+  tabs: TabMapping[];
+}
+
 function EditClientModal({ client, onClose, onSaved }: {
   client: Client; onClose: () => void; onSaved: (u: Partial<Client>) => void;
 }) {
@@ -131,69 +165,74 @@ function EditClientModal({ client, onClose, onSaved }: {
     status: client.status, adminEmail: client.adminEmail, sheetId: client.sheetId||'',
   });
 
-  // Column mapping state — pre-filled with known defaults for this client
-  const [mapping, setMapping] = useState({
-    patientsTab:     'Patients',
-    appointmentsTab: 'Appointments',
-    patients: {
-      id:        'PatientID',
-      firstName: 'FirstName',
-      lastName:  'LastName',
-      dob:       'DOB',
-      phone:     'Phone',
-      email:     'Email',
-      lastVisit: 'LastVisit',
-      flag:      'Flag',
-    },
-    appointments: {
-      id:        'SlotID',
-      date:      'Date',
-      time:      'Time',
-      duration:  'Duration_Min',
-      doctor:    'Doctor',
-      type:      'Type',
-      status:    'Status',
-      patientId: 'PatientID',
-    },
-  });
+  const [sheetTabs, setSheetTabs]       = useState<{ tabName: string; columns: string[] }[]>([]);
+  const [loadingSheet, setLoadingSheet] = useState(false);
+  const [sheetError, setSheetError]     = useState<string|null>(null);
+  const [sheetLoaded, setSheetLoaded]   = useState(false);
+  const [mapping, setMapping]           = useState<ColumnMapping>({ tabs: [] });
+  const [saving, setSaving]             = useState(false);
+  const [error, setError]               = useState<string|null>(null);
+  const [success, setSuccess]           = useState(false);
 
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string|null>(null);
-  const [success, setSuccess] = useState(false);
+  const loadSheetStructure = async () => {
+    const sid = form.sheetId.trim();
+    if (!sid) { setSheetError('Enter a Google Sheet ID in the Client Config tab first.'); return; }
+    setLoadingSheet(true); setSheetError(null); setSheetLoaded(false);
+    try {
+      const res  = await fetch(`${API_BASE_URL}/admin/sheet-structure?sheetId=${sid}`, {
+        headers: { Authorization: `Bearer ${getIdToken()}` },
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `Error ${res.status}`);
+      setSheetTabs(json.tabs || []);
+      setSheetLoaded(true);
+      if (mapping.tabs.length === 0 && json.tabs?.length > 0) {
+        setMapping({ tabs: json.tabs.map((t: any, i: number) => ({
+          tabName: t.tabName, label: t.tabName,
+          role: i === 0 ? 'primary' : 'secondary',
+          columns: {},
+        }))});
+      }
+    } catch(e: any) { setSheetError(e.message || 'Failed to load sheet.'); }
+    finally { setLoadingSheet(false); }
+  };
 
-  const setPatientField  = (key: string, val: string) => setMapping(m => ({ ...m, patients:     { ...m.patients,     [key]: val } }));
-  const setAptField      = (key: string, val: string) => setMapping(m => ({ ...m, appointments: { ...m.appointments, [key]: val } }));
+  const setColMapping = (tabName: string, stdKey: string, colValue: string) => {
+    setMapping(m => ({ tabs: m.tabs.map(t => t.tabName === tabName ? { ...t, columns: { ...t.columns, [stdKey]: colValue } } : t) }));
+  };
+  const setTabRole  = (tabName: string, role: 'primary'|'secondary') =>
+    setMapping(m => ({ tabs: m.tabs.map(t => t.tabName === tabName ? { ...t, role } : t) }));
+  const setTabLabel = (tabName: string, label: string) =>
+    setMapping(m => ({ tabs: m.tabs.map(t => t.tabName === tabName ? { ...t, label } : t) }));
 
   const save = async () => {
     setSaving(true); setError(null);
     try {
       const res = await fetch(`${API_BASE_URL}/admin/clients/${client.id}`, {
-        method:'PUT',
-        headers:{'Authorization':`Bearer ${getIdToken()}`,'Content-Type':'application/json'},
+        method: 'PUT',
+        headers: { 'Authorization': `Bearer ${getIdToken()}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          clientName:form.clientName, industry:form.industry, plan:form.plan,
-          status:form.status, adminEmail:form.adminEmail,
-          dataSource:{ sheetId:form.sheetId },
+          clientName: form.clientName, industry: form.industry, plan: form.plan,
+          status: form.status, adminEmail: form.adminEmail,
+          dataSource: { sheetId: form.sheetId },
           columnMapping: mapping,
         }),
       });
-      if (!res.ok) { const e=await res.json().catch(()=>({})); throw new Error(e.error||`Error ${res.status}`); }
+      if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.error||`Error ${res.status}`); }
       setSuccess(true);
-      onSaved({ name:form.clientName, industry:form.industry, plan:form.plan as any,
-        status:form.status as any, adminEmail:form.adminEmail, sheetId:form.sheetId });
+      onSaved({ name: form.clientName, industry: form.industry, plan: form.plan as any,
+        status: form.status as any, adminEmail: form.adminEmail, sheetId: form.sheetId });
       setTimeout(onClose, 1200);
-    } catch (e:any) { setError(e.message||'Failed to save.'); }
+    } catch(e: any) { setError(e.message||'Failed to save.'); }
     finally { setSaving(false); }
   };
 
-  const inputCls = "w-full bg-white/[0.05] border border-white/[0.1] rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-blue-500/60 placeholder-gray-600 transition-colors font-mono";
+  const selectCls = "w-full bg-white/[0.05] border border-white/[0.1] rounded-xl px-3 py-2 text-white text-sm outline-none focus:border-blue-500/60 transition-colors";
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose}/>
-      <div className="relative w-full max-w-2xl bg-[#080d1e] border border-white/[0.1] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-
-        {/* Header */}
+      <div className="relative w-full max-w-3xl bg-[#080d1e] border border-white/[0.1] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
         <div className="flex items-center justify-between px-6 py-5 border-b border-white/[0.08] shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 bg-gradient-to-br from-blue-600 to-purple-600 rounded-xl flex items-center justify-center text-white font-bold text-sm">{client.name[0]}</div>
@@ -202,21 +241,17 @@ function EditClientModal({ client, onClose, onSaved }: {
           <button onClick={onClose} className="text-gray-500 hover:text-white p-2 rounded-xl hover:bg-white/[0.05] transition-colors"><X size={18}/></button>
         </div>
 
-        {/* Tab switcher */}
         <div className="flex gap-1 px-6 pt-4 shrink-0">
-          {([['config','Client Config'],['mapping','Data Mapping']] as const).map(([id,label])=>(
+          {(['config','mapping'] as const).map(id => (
             <button key={id} onClick={()=>setActiveTab(id)}
               className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${activeTab===id?'bg-blue-600 text-white':'bg-white/[0.05] text-gray-400 hover:text-white'}`}>
-              {label}
-              {id==='mapping' && <span className="ml-2 text-xs bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded-full">Required for dashboard</span>}
+              {id==='config' ? 'Client Config' : 'Data Mapping'}
+              {id==='mapping' && <span className="ml-2 text-xs bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded-full">Required</span>}
             </button>
           ))}
         </div>
 
-        {/* Scrollable body */}
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
-
-          {/* ── CLIENT CONFIG TAB ── */}
           {activeTab === 'config' && (<>
             {([['Company Name','clientName','text'],['Industry','industry','text'],['Admin Email','adminEmail','email']] as [string,string,string][]).map(([label,key,type])=>(
               <div key={key}>
@@ -237,7 +272,7 @@ function EditClientModal({ client, onClose, onSaved }: {
               <div className="grid grid-cols-3 gap-2">
                 {(['Free','Pro','Enterprise'] as const).map(p=>(
                   <button key={p} onClick={()=>setForm(f=>({...f,plan:p}))}
-                    className={`py-2.5 rounded-xl text-sm font-medium transition-all ${form.plan===p ? p==='Free'?'bg-gray-600 text-white':p==='Pro'?'bg-blue-600 text-white':'bg-purple-600 text-white' : 'bg-white/[0.05] border border-white/[0.08] text-gray-400 hover:text-white'}`}>{p}</button>
+                    className={`py-2.5 rounded-xl text-sm font-medium transition-all ${form.plan===p?p==='Free'?'bg-gray-600 text-white':p==='Pro'?'bg-blue-600 text-white':'bg-purple-600 text-white':'bg-white/[0.05] border border-white/[0.08] text-gray-400 hover:text-white'}`}>{p}</button>
                 ))}
               </div>
             </div>
@@ -246,92 +281,102 @@ function EditClientModal({ client, onClose, onSaved }: {
               <div className="grid grid-cols-3 gap-2">
                 {(['active','inactive','pending'] as const).map(s=>(
                   <button key={s} onClick={()=>setForm(f=>({...f,status:s}))}
-                    className={`py-2.5 rounded-xl text-sm font-medium capitalize transition-all ${form.status===s ? s==='active'?'bg-emerald-600 text-white':s==='inactive'?'bg-red-600 text-white':'bg-amber-600 text-white' : 'bg-white/[0.05] border border-white/[0.08] text-gray-400 hover:text-white'}`}>{s}</button>
+                    className={`py-2.5 rounded-xl text-sm font-medium capitalize transition-all ${form.status===s?s==='active'?'bg-emerald-600 text-white':s==='inactive'?'bg-red-600 text-white':'bg-amber-600 text-white':'bg-white/[0.05] border border-white/[0.08] text-gray-400 hover:text-white'}`}>{s}</button>
                 ))}
               </div>
             </div>
           </>)}
 
-          {/* ── DATA MAPPING TAB ── */}
           {activeTab === 'mapping' && (<>
-            <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl px-4 py-3 flex items-start gap-2">
-              <AlertCircle size={14} className="text-blue-400 shrink-0 mt-0.5"/>
-              <p className="text-blue-300 text-xs">Enter the exact column header names from this client's Google Sheet. These are case-sensitive. The dashboard won't load data until this is configured.</p>
+            <div className="bg-white/[0.03] border border-white/[0.08] rounded-xl p-4">
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <p className="text-white text-sm font-semibold">Step 1 — Load sheet structure</p>
+                  <p className="text-gray-500 text-xs mt-0.5">Reads every tab name and column header directly from the client's Google Sheet</p>
+                </div>
+                <button onClick={loadSheetStructure} disabled={loadingSheet}
+                  className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-colors shrink-0 ml-4">
+                  {loadingSheet ? <Loader2 size={14} className="animate-spin"/> : <RefreshCw size={14}/>}
+                  {loadingSheet ? 'Loading…' : sheetLoaded ? 'Reload' : 'Load from Sheet'}
+                </button>
+              </div>
+              {sheetError && (
+                <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2 mt-2">
+                  <AlertCircle size={13} className="text-red-400 shrink-0"/>
+                  <p className="text-red-400 text-xs">{sheetError}</p>
+                </div>
+              )}
+              {sheetLoaded && (
+                <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-3 py-2 mt-2">
+                  <CheckCircle size={13} className="text-emerald-400 shrink-0"/>
+                  <p className="text-emerald-400 text-xs">Found {sheetTabs.length} tab{sheetTabs.length!==1?'s':''}: {sheetTabs.map(t=>t.tabName).join(', ')}</p>
+                </div>
+              )}
             </div>
 
-            {/* Patients tab */}
-            <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-4 space-y-3">
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-2 h-2 bg-blue-400 rounded-full"/>
-                <p className="text-white text-sm font-semibold">Patients Tab</p>
-              </div>
+            {mapping.tabs.length > 0 && (<>
               <div>
-                <label className="text-gray-500 text-xs mb-1 block">Tab name in the spreadsheet</label>
-                <input value={mapping.patientsTab} onChange={e=>setMapping(m=>({...m,patientsTab:e.target.value}))}
-                  placeholder="Patients" className={inputCls}/>
+                <p className="text-white text-sm font-semibold mb-1">Step 2 — Configure each tab</p>
+                <p className="text-gray-500 text-xs">Mark one tab as ⭐ Primary (the main records, e.g. appointments). Others are Secondary (e.g. patients/contacts). Use dropdowns to map columns — leave blank to skip.</p>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                {([
-                  ['id',        'Patient ID column'],
-                  ['firstName', 'First name column'],
-                  ['lastName',  'Last name column'],
-                  ['dob',       'Date of birth column'],
-                  ['phone',     'Phone column'],
-                  ['email',     'Email column'],
-                  ['lastVisit', 'Last visit column'],
-                  ['flag',      'Flag column'],
-                ] as [string,string][]).map(([key,label])=>(
-                  <div key={key}>
-                    <label className="text-gray-500 text-xs mb-1 block">{label}</label>
-                    <input value={(mapping.patients as any)[key]} onChange={e=>setPatientField(key,e.target.value)}
-                      placeholder={key} className={inputCls}/>
+              {mapping.tabs.map((tab) => {
+                const sheetTab   = sheetTabs.find(t => t.tabName === tab.tabName);
+                const colOptions = sheetTab?.columns || [];
+                const fields     = tab.role === 'primary' ? STANDARD_FIELDS : SECONDARY_FIELDS;
+                return (
+                  <div key={tab.tabName} className={`bg-white/[0.02] border rounded-xl p-4 space-y-4 ${tab.role==='primary'?'border-blue-500/20':'border-purple-500/20'}`}>
+                    <div className="flex items-start gap-3 flex-wrap">
+                      <div className={`w-2.5 h-2.5 rounded-full mt-1.5 shrink-0 ${tab.role==='primary'?'bg-blue-400':'bg-purple-400'}`}/>
+                      <div className="flex-1">
+                        <p className="text-white font-semibold text-sm">{tab.tabName}</p>
+                        <p className="text-gray-500 text-xs">{colOptions.length} columns detected</p>
+                      </div>
+                      <div className="flex gap-1.5">
+                        {(['primary','secondary'] as const).map(r=>(
+                          <button key={r} onClick={()=>setTabRole(tab.tabName, r)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all capitalize ${tab.role===r?r==='primary'?'bg-blue-600 text-white':'bg-purple-600 text-white':'bg-white/[0.05] text-gray-400 hover:text-white'}`}>
+                            {r==='primary'?'⭐ Primary':'Secondary'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-gray-500 text-xs mb-1 block">Display name in dashboard</label>
+                      <input value={tab.label} onChange={e=>setTabLabel(tab.tabName, e.target.value)}
+                        placeholder={tab.tabName}
+                        className="w-full bg-white/[0.05] border border-white/[0.08] rounded-xl px-3 py-2 text-white text-sm outline-none focus:border-blue-500/60 placeholder-gray-600"/>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      {fields.map(({key, label, hint})=>(
+                        <div key={key}>
+                          <label className="text-gray-400 text-xs mb-1 block font-medium">{label}</label>
+                          <select value={tab.columns[key]||''} onChange={e=>setColMapping(tab.tabName, key, e.target.value)} className={selectCls}>
+                            <option value="" className="bg-[#0d1428]">— not mapped —</option>
+                            {colOptions.map(col=><option key={col} value={col} className="bg-[#0d1428]">{col}</option>)}
+                          </select>
+                          <p className="text-gray-600 text-xs mt-0.5">{hint}</p>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                ))}
-              </div>
-            </div>
+                );
+              })}
+            </>)}
 
-            {/* Appointments tab */}
-            <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-4 space-y-3">
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-2 h-2 bg-purple-400 rounded-full"/>
-                <p className="text-white text-sm font-semibold">Appointments Tab</p>
-              </div>
-              <div>
-                <label className="text-gray-500 text-xs mb-1 block">Tab name in the spreadsheet</label>
-                <input value={mapping.appointmentsTab} onChange={e=>setMapping(m=>({...m,appointmentsTab:e.target.value}))}
-                  placeholder="Appointments" className={inputCls}/>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                {([
-                  ['id',        'Slot ID column'],
-                  ['date',      'Date column'],
-                  ['time',      'Time column'],
-                  ['duration',  'Duration column'],
-                  ['doctor',    'Doctor column'],
-                  ['type',      'Appointment type column'],
-                  ['status',    'Status column'],
-                  ['patientId', 'Patient ID column (for linking)'],
-                ] as [string,string][]).map(([key,label])=>(
-                  <div key={key}>
-                    <label className="text-gray-500 text-xs mb-1 block">{label}</label>
-                    <input value={(mapping.appointments as any)[key]} onChange={e=>setAptField(key,e.target.value)}
-                      placeholder={key} className={inputCls}/>
-                  </div>
-                ))}
-              </div>
-            </div>
+            {!sheetLoaded && mapping.tabs.length===0 && (
+              <div className="text-center py-8 text-gray-500 text-sm">Click "Load from Sheet" above to get started</div>
+            )}
           </>)}
 
           {error && <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/25 rounded-xl px-4 py-3"><AlertCircle size={15} className="text-red-400 shrink-0"/><p className="text-red-400 text-sm">{error}</p></div>}
           {success && <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/25 rounded-xl px-4 py-3"><CheckCircle size={15} className="text-emerald-400 shrink-0"/><p className="text-emerald-400 text-sm">Saved successfully!</p></div>}
         </div>
 
-        {/* Footer */}
         <div className="flex gap-3 px-6 py-4 border-t border-white/[0.08] shrink-0">
           <button onClick={save} disabled={saving||success}
             className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 disabled:cursor-not-allowed text-white py-3 rounded-xl text-sm font-medium transition-colors">
-            {saving ? <Loader2 size={15} className="animate-spin"/> : <Save size={15}/>}
-            {saving ? 'Saving…' : success ? 'Saved!' : 'Save Changes'}
+            {saving?<Loader2 size={15} className="animate-spin"/>:<Save size={15}/>}
+            {saving?'Saving…':success?'Saved!':'Save Changes'}
           </button>
           <button onClick={onClose} className="px-5 bg-white/[0.05] hover:bg-white/[0.08] text-gray-300 rounded-xl text-sm transition-colors">Cancel</button>
         </div>
@@ -340,7 +385,6 @@ function EditClientModal({ client, onClose, onSaved }: {
   );
 }
 
-// ── Add Client Modal ───────────────────────────────────────────────────────
 // Step 1: POST /admin/clients  → creates client config in DynamoDB
 // Step 2: POST /admin/users    → creates client-admin in Cognito + DynamoDB (sends invite email)
 function AddClientModal({ onClose, onCreated }: {
