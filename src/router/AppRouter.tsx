@@ -94,7 +94,7 @@ function RoleBasedDashboard() {
 
 // ── Login page ────────────────────────────────────────────────────────────
 // Imported from wherever it lives in your project — adjust path if needed.
-import { LoginPage } from '../auth/LoginPage';
+import { LoginPage } from '../pages/LoginPage';
 
 // ── Root router ────────────────────────────────────────────────────────────
 export function AppRouter() {
