@@ -7,7 +7,7 @@
 //   unauthenticated→ /login
 // ============================================================
 
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router';
 import { useAuth } from '../auth/AuthContext';
 import { SuperAdminDashboard } from '../admin/SuperAdminDashboard';
 import { ClientAdminDashboard } from '../app/ClientAdminDashboard';
