@@ -93,8 +93,10 @@ function RoleBasedDashboard() {
 }
 
 // ── Login page ────────────────────────────────────────────────────────────
-// Imported from wherever it lives in your project — adjust path if needed.
 import { LoginPage } from '../pages/LoginPage';
+
+// ── Marketing site (public homepage + all public pages) ──────────────────
+import App from '../App';
 
 // ── Root router ────────────────────────────────────────────────────────────
 export function AppRouter() {
@@ -124,21 +126,20 @@ export function AppRouter() {
           }
         />
 
-        {/* Default redirect */}
-        <Route path="/" element={<DefaultRedirect />} />
-        <Route path="*" element={<DefaultRedirect />} />
+        {/* Public homepage (marketing site) */}
+        <Route path="/" element={<HomepageRoute />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   );
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
-function DefaultRedirect() {
-  const { isAuthenticated, isLoading, session } = useAuth();
+function HomepageRoute() {
+  const { isAuthenticated, isLoading } = useAuth();
   if (isLoading) return <SentriaLoader />;
-  if (!isAuthenticated) return <Navigate to="/login" replace />;
-  const role = session?.user?.role;
-  return <Navigate to="/dashboard" replace />;
+  if (isAuthenticated) return <Navigate to="/dashboard" replace />;
+  return <App />;
 }
 
 function PublicLoginRoute() {
