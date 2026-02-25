@@ -162,7 +162,7 @@ function EditClientModal({ client, onClose, onSaved }: {
   onClose: () => void;
   onSaved: (updated: Partial<Client>) => void;
 }) {
-  const { getAccessToken } = useAuth();
+  const { getIdToken } = useAuth();
   const [form, setForm] = useState<EditClientForm>({
     clientName: client.name,
     industry: client.industry,
@@ -179,7 +179,7 @@ function EditClientModal({ client, onClose, onSaved }: {
     setSaving(true);
     setError(null);
     try {
-      const token = getAccessToken();
+      const token = getIdToken();
       const res = await fetch(`${API_BASE_URL}/admin/clients/${client.id}`, {
         method: 'PUT',
         headers: {
@@ -599,7 +599,7 @@ function AddClientModal({ onClose, onCreated }: {
   onClose: () => void;
   onCreated: (client: Client) => void;
 }) {
-  const { getAccessToken } = useAuth();
+  const { getIdToken } = useAuth();
   const [form, setForm] = useState({
     clientName: '',
     industry: '',
@@ -618,7 +618,7 @@ function AddClientModal({ onClose, onCreated }: {
     setSaving(true);
     setError(null);
     try {
-      const token = getAccessToken();
+      const token = getIdToken();
       const res = await fetch(`${API_BASE_URL}/admin/clients`, {
         method: 'POST',
         headers: {
@@ -787,7 +787,7 @@ function AddClientModal({ onClose, onCreated }: {
 
 // ── Clients Tab ───────────────────────────────────────────────────────────
 function ClientsTab() {
-  const { getAccessToken } = useAuth();
+  const { getIdToken } = useAuth();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'all' | 'active' | 'inactive' | 'pending'>('all');
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
@@ -802,7 +802,7 @@ function ClientsTab() {
     const load = async () => {
       setLoadingClients(true);
       try {
-        const token = getAccessToken();
+        const token = getIdToken();
         const res = await fetch(`${API_BASE_URL}/admin/clients`, {
           headers: { 'Authorization': `Bearer ${token}` },
         });
@@ -832,7 +832,7 @@ function ClientsTab() {
       }
     };
     load();
-  }, [getAccessToken]);
+  }, [getIdToken]);
 
   // ── Update client in state + close panels ────────────────────────────────
   const handleSaved = (clientId: string, updated: Partial<Client>) => {
@@ -845,7 +845,7 @@ function ClientsTab() {
     const newStatus = client.status === 'active' ? 'inactive' : 'active';
     setTogglingId(client.id);
     try {
-      const token = getAccessToken();
+      const token = getIdToken();
       const res = await fetch(`${API_BASE_URL}/admin/clients/${client.id}`, {
         method: 'PUT',
         headers: {

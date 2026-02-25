@@ -16,7 +16,6 @@ import {
   CognitoIdentityProviderClient,
   InitiateAuthCommand,
   GlobalSignOutCommand,
-  GetUserCommand,
 } from '@aws-sdk/client-cognito-identity-provider';
 import { cognitoConfig, API_BASE_URL } from './cognitoConfig';
 import type { UserSession, SentriaUser, ClientConfig } from '../types/dashboard';
@@ -41,7 +40,6 @@ function loadTokens(): StoredTokens | null {
     const raw = sessionStorage.getItem(TOKEN_KEY);
     if (!raw) return null;
     const tokens: StoredTokens = JSON.parse(raw);
-    // Expired?
     if (Date.now() > tokens.expiresAt) {
       sessionStorage.removeItem(TOKEN_KEY);
       return null;
@@ -64,6 +62,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   getAccessToken: () => string | null;
+  getIdToken: () => string | null;       // ← added
   refreshSession: () => Promise<void>;
 }
 
@@ -118,10 +117,8 @@ async function fetchUserConfig(idToken: string): Promise<UserSession> {
     if (res.ok) {
       return res.json() as Promise<UserSession>;
     }
-    // API returned error — fall through to JWT fallback
     console.warn(`API returned ${res.status}, using JWT fallback`);
   } catch (err) {
-    // Network/CORS error — fall through to JWT fallback
     console.warn('API unreachable, using JWT fallback:', err);
   }
 
@@ -177,13 +174,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         accessToken: result.AccessToken,
         idToken: result.IdToken,
         refreshToken: result.RefreshToken,
-        // Cognito default expiry is 1 hour
         expiresAt: Date.now() + (result.ExpiresIn || 3600) * 1000,
       };
 
       saveTokens(tokens);
 
-      // Fetch this user's dashboard config from our API
       const userSession = await fetchUserConfig(result.IdToken);
       setSession(userSession);
     } finally {
@@ -199,7 +194,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           new GlobalSignOutCommand({ AccessToken: tokens.accessToken })
         );
       } catch (err) {
-        // Sign out locally even if global sign-out fails
         console.warn('Global sign-out failed, clearing local session:', err);
       }
     }
@@ -209,6 +203,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const getAccessToken = useCallback((): string | null => {
     return loadTokens()?.accessToken ?? null;
+  }, []);
+
+  // ← New: returns the ID token (what API Gateway Cognito authorizer validates)
+  const getIdToken = useCallback((): string | null => {
+    return loadTokens()?.idToken ?? null;
   }, []);
 
   const refreshSession = useCallback(async () => {
@@ -254,6 +253,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         login,
         logout,
         getAccessToken,
+        getIdToken,         // ← added to provider value
         refreshSession,
       }}
     >
