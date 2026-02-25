@@ -4,7 +4,7 @@
 // system health. Data-ready but uses placeholders for now.
 // ============================================================
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   LayoutDashboard, Building2, Users, BarChart3, Activity,
   LogOut, ChevronRight, Bell, Search, Plus, Edit2, Eye,
@@ -363,10 +363,12 @@ function EditClientModal({ client, onClose, onSaved }: {
 }
 
 // ── Client Detail Side Panel ─────────────────────────────────────────────
-function ClientDetailPanel({ client, onClose, onEdit }: {
+function ClientDetailPanel({ client, onClose, onEdit, onToggleStatus, toggling }: {
   client: Client;
   onClose: () => void;
   onEdit: () => void;
+  onToggleStatus: () => void;
+  toggling: boolean;
 }) {
   const users = MOCK_USERS.filter(u => u.clientId === client.id);
   return (
@@ -454,8 +456,20 @@ function ClientDetailPanel({ client, onClose, onEdit }: {
             <button className="w-full flex items-center gap-3 px-4 py-3 bg-white/[0.04] border border-white/[0.08] rounded-xl text-gray-300 text-sm hover:bg-white/[0.06] transition-colors">
               <Plus size={15} /> Add User to Client
             </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm hover:bg-red-500/15 transition-colors">
-              <XCircle size={15} /> Deactivate Client
+            <button
+              onClick={onToggleStatus}
+              disabled={toggling}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm transition-colors disabled:opacity-60 ${
+                client.status === 'active'
+                  ? 'bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/15'
+                  : 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/15'
+              }`}
+            >
+              {toggling
+                ? <Loader2 size={15} className="animate-spin" />
+                : client.status === 'active' ? <XCircle size={15} /> : <CheckCircle size={15} />
+              }
+              {toggling ? 'Updating…' : client.status === 'active' ? 'Deactivate Client' : 'Activate Client'}
             </button>
           </div>
         </div>
@@ -580,18 +594,273 @@ function OverviewTab({ userName }: { userName: string }) {
   );
 }
 
+// ── Add Client Modal ──────────────────────────────────────────────────────
+function AddClientModal({ onClose, onCreated }: {
+  onClose: () => void;
+  onCreated: (client: Client) => void;
+}) {
+  const { getAccessToken } = useAuth();
+  const [form, setForm] = useState({
+    clientName: '',
+    industry: '',
+    adminEmail: '',
+    plan: 'Pro' as 'Free' | 'Pro' | 'Enterprise',
+    sheetId: '',
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleCreate = async () => {
+    if (!form.clientName || !form.industry || !form.adminEmail) {
+      setError('Company name, industry and admin email are required.');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const token = getAccessToken();
+      const res = await fetch(`${API_BASE_URL}/admin/clients`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          clientName: form.clientName,
+          industry: form.industry,
+          adminEmail: form.adminEmail,
+          plan: form.plan,
+          status: 'active',
+          dataSource: { sheetId: form.sheetId },
+          userCount: 0,
+          totalCalls: 0,
+          totalMinutes: 0,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `Server returned ${res.status}`);
+      }
+      const created = await res.json();
+      // Map DynamoDB response to Client shape
+      onCreated({
+        id: created.clientId,
+        name: created.clientName || form.clientName,
+        industry: created.industry || form.industry,
+        plan: created.plan || form.plan,
+        status: created.status || 'active',
+        adminEmail: created.adminEmail || form.adminEmail,
+        sheetId: created.dataSource?.sheetId || form.sheetId,
+        userCount: 0,
+        totalCalls: 0,
+        totalMinutes: 0,
+        createdAt: created.createdAt || new Date().toISOString().split('T')[0],
+      });
+      onClose();
+    } catch (err: any) {
+      setError(err.message || 'Failed to create client. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-60 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-lg bg-[#080d1e] border border-white/[0.1] rounded-2xl shadow-2xl overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-5 border-b border-white/[0.08]">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 bg-gradient-to-br from-blue-600 to-purple-600 rounded-xl flex items-center justify-center">
+              <Plus size={16} className="text-white" />
+            </div>
+            <div>
+              <h3 className="text-white font-semibold">Add New Client</h3>
+              <p className="text-gray-500 text-xs">Creates a new client account on the platform</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-gray-500 hover:text-white p-2 rounded-xl hover:bg-white/[0.05] transition-colors">
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Form */}
+        <div className="p-6 space-y-4">
+          {/* Company Name */}
+          <div>
+            <label className="text-gray-400 text-sm mb-1.5 block">Company Name <span className="text-red-400">*</span></label>
+            <input
+              type="text"
+              placeholder="e.g. Apex Dental Clinic"
+              value={form.clientName}
+              onChange={e => setForm(f => ({ ...f, clientName: e.target.value }))}
+              className="w-full bg-white/[0.05] border border-white/[0.1] rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-blue-500/60 placeholder-gray-600 transition-colors"
+            />
+          </div>
+
+          {/* Industry */}
+          <div>
+            <label className="text-gray-400 text-sm mb-1.5 block">Industry <span className="text-red-400">*</span></label>
+            <input
+              type="text"
+              placeholder="e.g. Healthcare, Beauty & Wellness, Legal Services"
+              value={form.industry}
+              onChange={e => setForm(f => ({ ...f, industry: e.target.value }))}
+              className="w-full bg-white/[0.05] border border-white/[0.1] rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-blue-500/60 placeholder-gray-600 transition-colors"
+            />
+          </div>
+
+          {/* Admin Email */}
+          <div>
+            <label className="text-gray-400 text-sm mb-1.5 block">Admin Email <span className="text-red-400">*</span></label>
+            <input
+              type="email"
+              placeholder="admin@theirclinic.com"
+              value={form.adminEmail}
+              onChange={e => setForm(f => ({ ...f, adminEmail: e.target.value }))}
+              className="w-full bg-white/[0.05] border border-white/[0.1] rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-blue-500/60 placeholder-gray-600 transition-colors"
+            />
+          </div>
+
+          {/* Google Sheet ID */}
+          <div>
+            <label className="text-gray-400 text-sm mb-1.5 block">Google Sheet ID <span className="text-gray-600">(optional — can be added later)</span></label>
+            <input
+              type="text"
+              placeholder="1A9Zt_S1PhYcwRRy7jeZ4Kvj1dTSE6PCIOWjSNnwv61M"
+              value={form.sheetId}
+              onChange={e => setForm(f => ({ ...f, sheetId: e.target.value }))}
+              className="w-full bg-blue-500/[0.06] border border-blue-500/20 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-blue-500/60 placeholder-gray-600 transition-colors font-mono"
+            />
+            <p className="text-gray-600 text-xs mt-1">Found in the Sheets URL: /spreadsheets/d/<span className="text-blue-500">SHEET_ID</span>/edit</p>
+          </div>
+
+          {/* Plan */}
+          <div>
+            <label className="text-gray-400 text-sm mb-1.5 block">Plan</label>
+            <div className="grid grid-cols-3 gap-2">
+              {(['Free', 'Pro', 'Enterprise'] as const).map(p => (
+                <button
+                  key={p}
+                  onClick={() => setForm(f => ({ ...f, plan: p }))}
+                  className={`py-2.5 rounded-xl text-sm font-medium transition-all ${
+                    form.plan === p
+                      ? p === 'Free' ? 'bg-gray-600 text-white'
+                        : p === 'Pro' ? 'bg-blue-600 text-white'
+                        : 'bg-purple-600 text-white'
+                      : 'bg-white/[0.05] border border-white/[0.08] text-gray-400 hover:text-white'
+                  }`}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Error */}
+          {error && (
+            <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/25 rounded-xl px-4 py-3">
+              <AlertCircle size={15} className="text-red-400 shrink-0" />
+              <p className="text-red-400 text-sm">{error}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex gap-3 px-6 py-4 border-t border-white/[0.08]">
+          <button
+            onClick={handleCreate}
+            disabled={saving}
+            className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 disabled:cursor-not-allowed text-white py-3 rounded-xl text-sm font-medium transition-colors"
+          >
+            {saving ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}
+            {saving ? 'Creating…' : 'Create Client'}
+          </button>
+          <button onClick={onClose} className="px-5 bg-white/[0.05] hover:bg-white/[0.08] text-gray-300 rounded-xl text-sm transition-colors">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Clients Tab ───────────────────────────────────────────────────────────
 function ClientsTab() {
+  const { getAccessToken } = useAuth();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'all' | 'active' | 'inactive' | 'pending'>('all');
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
-  const [clients, setClients] = useState(MOCK_CLIENTS);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [loadingClients, setLoadingClients] = useState(true);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
+  // ── Load real clients from API on mount ──────────────────────────────────
+  useEffect(() => {
+    const load = async () => {
+      setLoadingClients(true);
+      try {
+        const token = getAccessToken();
+        const res = await fetch(`${API_BASE_URL}/admin/clients`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error(`API returned ${res.status}`);
+        const items = await res.json();
+        // Map DynamoDB fields to Client shape
+        const mapped: Client[] = (items || []).map((item: any) => ({
+          id: item.clientId,
+          name: item.clientName || item.name || '—',
+          industry: item.industry || '—',
+          plan: item.plan || 'Free',
+          status: item.status || 'active',
+          adminEmail: item.adminEmail || '—',
+          sheetId: item.dataSource?.sheetId || '',
+          userCount: item.userCount || 0,
+          totalCalls: item.totalCalls || 0,
+          totalMinutes: item.totalMinutes || 0,
+          createdAt: item.createdAt?.split('T')[0] || '—',
+        }));
+        setClients(mapped);
+      } catch (err) {
+        console.error('Failed to load clients:', err);
+        // Fall back to empty — no mock data
+        setClients([]);
+      } finally {
+        setLoadingClients(false);
+      }
+    };
+    load();
+  }, [getAccessToken]);
+
+  // ── Update client in state + close panels ────────────────────────────────
   const handleSaved = (clientId: string, updated: Partial<Client>) => {
     setClients(prev => prev.map(c => c.id === clientId ? { ...c, ...updated } : c));
-    // Also update selectedClient so the detail panel reflects changes
     setSelectedClient(prev => prev?.id === clientId ? { ...prev, ...updated } : prev);
+  };
+
+  // ── Toggle active/inactive ────────────────────────────────────────────────
+  const handleToggleStatus = async (client: Client) => {
+    const newStatus = client.status === 'active' ? 'inactive' : 'active';
+    setTogglingId(client.id);
+    try {
+      const token = getAccessToken();
+      const res = await fetch(`${API_BASE_URL}/admin/clients/${client.id}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (!res.ok) throw new Error(`API returned ${res.status}`);
+      handleSaved(client.id, { status: newStatus });
+    } catch (err) {
+      console.error('Failed to toggle status:', err);
+    } finally {
+      setTogglingId(null);
+    }
   };
 
   const filtered = useMemo(() =>
@@ -605,11 +874,14 @@ function ClientsTab() {
 
   return (
     <div className="space-y-6">
+      {/* Modals */}
       {selectedClient && (
         <ClientDetailPanel
           client={selectedClient}
           onClose={() => setSelectedClient(null)}
-          onEdit={() => { setEditingClient(selectedClient); }}
+          onEdit={() => setEditingClient(selectedClient)}
+          onToggleStatus={() => handleToggleStatus(selectedClient)}
+          toggling={togglingId === selectedClient.id}
         />
       )}
       {editingClient && (
@@ -619,13 +891,22 @@ function ClientsTab() {
           onSaved={(updated) => handleSaved(editingClient.id, updated)}
         />
       )}
+      {showAddModal && (
+        <AddClientModal
+          onClose={() => setShowAddModal(false)}
+          onCreated={(newClient) => setClients(prev => [newClient, ...prev])}
+        />
+      )}
 
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-3xl font-bold bg-gradient-to-r from-blue-300 to-purple-400 bg-clip-text text-transparent">Clients</h2>
           <p className="text-gray-400 mt-1">All companies using the Sentria platform</p>
         </div>
-        <button className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-xl text-sm font-medium transition-colors">
+        <button
+          onClick={() => setShowAddModal(true)}
+          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-xl text-sm font-medium transition-colors"
+        >
           <Plus size={15} /> Add Client
         </button>
       </div>
@@ -664,37 +945,51 @@ function ClientsTab() {
 
       {/* Table */}
       <div className="bg-white/[0.03] border border-white/[0.08] rounded-2xl overflow-hidden">
-        <div className="grid grid-cols-[2fr_1.5fr_1fr_1fr_1fr_1fr_auto] gap-4 px-5 py-3.5 border-b border-white/[0.06]">
-          {['Company', 'Industry', 'Plan', 'Status', 'Users', 'Total Calls', ''].map(h => (
+        <div className="grid grid-cols-[2fr_1.5fr_1fr_1fr_1fr_auto] gap-4 px-5 py-3.5 border-b border-white/[0.06]">
+          {['Company', 'Industry', 'Plan', 'Status', 'Created', ''].map(h => (
             <span key={h} className="text-gray-500 text-xs font-medium uppercase tracking-wide">{h}</span>
           ))}
         </div>
-        <div className="divide-y divide-white/[0.04]">
-          {filtered.map(c => (
-            <div key={c.id} className="grid grid-cols-[2fr_1.5fr_1fr_1fr_1fr_1fr_auto] gap-4 px-5 py-4 items-center hover:bg-white/[0.02] transition-colors">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="w-9 h-9 bg-gradient-to-br from-blue-600/60 to-purple-600/60 rounded-xl flex items-center justify-center text-white font-bold text-sm shrink-0">
-                  {c.name[0]}
+        {loadingClients ? (
+          <div className="flex items-center justify-center gap-3 py-16 text-gray-500">
+            <Loader2 size={18} className="animate-spin" />
+            <span className="text-sm">Loading clients from database…</span>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="text-center py-16">
+            <Building2 size={32} className="text-gray-700 mx-auto mb-3" />
+            <p className="text-gray-500 text-sm">No clients found</p>
+            <p className="text-gray-600 text-xs mt-1">
+              {clients.length === 0 ? 'Add your first client using the button above.' : 'Try adjusting your search or filter.'}
+            </p>
+          </div>
+        ) : (
+          <div className="divide-y divide-white/[0.04]">
+            {filtered.map(c => (
+              <div key={c.id} className="grid grid-cols-[2fr_1.5fr_1fr_1fr_1fr_auto] gap-4 px-5 py-4 items-center hover:bg-white/[0.02] transition-colors">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-9 h-9 bg-gradient-to-br from-blue-600/60 to-purple-600/60 rounded-xl flex items-center justify-center text-white font-bold text-sm shrink-0">
+                    {c.name[0]}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-white text-sm font-medium truncate">{c.name}</p>
+                    <p className="text-gray-500 text-xs truncate">{c.adminEmail}</p>
+                  </div>
                 </div>
-                <div className="min-w-0">
-                  <p className="text-white text-sm font-medium truncate">{c.name}</p>
-                  <p className="text-gray-500 text-xs truncate">{c.adminEmail}</p>
-                </div>
+                <span className="text-gray-400 text-sm truncate">{c.industry}</span>
+                <span className={`text-xs px-2.5 py-1 rounded-full font-medium w-fit ${planColors[c.plan]}`}>{c.plan}</span>
+                <span className={`text-xs px-2.5 py-1 rounded-full font-medium w-fit ${statusColors[c.status]}`}>{c.status}</span>
+                <span className="text-gray-500 text-xs">{c.createdAt}</span>
+                <button onClick={() => setSelectedClient(c)}
+                  className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/15 px-3 py-1.5 rounded-lg transition-colors">
+                  <Eye size={12} /> View
+                </button>
               </div>
-              <span className="text-gray-400 text-sm truncate">{c.industry}</span>
-              <span className={`text-xs px-2.5 py-1 rounded-full font-medium w-fit ${planColors[c.plan]}`}>{c.plan}</span>
-              <span className={`text-xs px-2.5 py-1 rounded-full font-medium w-fit ${statusColors[c.status]}`}>{c.status}</span>
-              <span className="text-gray-300 text-sm">{c.userCount}</span>
-              <span className="text-gray-300 text-sm">{c.totalCalls.toLocaleString()}</span>
-              <button onClick={() => setSelectedClient(c)}
-                className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/15 px-3 py-1.5 rounded-lg transition-colors">
-                <Eye size={12} /> View
-              </button>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
         <div className="px-5 py-3.5 border-t border-white/[0.06] text-gray-500 text-sm">
-          Showing {filtered.length} of {MOCK_CLIENTS.length} clients
+          {loadingClients ? 'Loading…' : `Showing ${filtered.length} of ${clients.length} clients`}
         </div>
       </div>
     </div>
