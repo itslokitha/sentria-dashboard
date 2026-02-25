@@ -119,17 +119,50 @@ function StatCard({ title, value, sub, icon: Icon, trend, change, color }: {
 }
 
 // ── Edit Client Modal ─────────────────────────────────────────────────────
+// Includes a full Data Mapping section so super-admin can configure
+// which Sheet column maps to which standard field for each client.
 function EditClientModal({ client, onClose, onSaved }: {
   client: Client; onClose: () => void; onSaved: (u: Partial<Client>) => void;
 }) {
   const { getIdToken } = useAuth();
+  const [activeTab, setActiveTab] = useState<'config'|'mapping'>('config');
   const [form, setForm] = useState({
     clientName: client.name, industry: client.industry, plan: client.plan,
     status: client.status, adminEmail: client.adminEmail, sheetId: client.sheetId||'',
   });
+
+  // Column mapping state — pre-filled with known defaults for this client
+  const [mapping, setMapping] = useState({
+    patientsTab:     'Patients',
+    appointmentsTab: 'Appointments',
+    patients: {
+      id:        'PatientID',
+      firstName: 'FirstName',
+      lastName:  'LastName',
+      dob:       'DOB',
+      phone:     'Phone',
+      email:     'Email',
+      lastVisit: 'LastVisit',
+      flag:      'Flag',
+    },
+    appointments: {
+      id:        'SlotID',
+      date:      'Date',
+      time:      'Time',
+      duration:  'Duration_Min',
+      doctor:    'Doctor',
+      type:      'Type',
+      status:    'Status',
+      patientId: 'PatientID',
+    },
+  });
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string|null>(null);
   const [success, setSuccess] = useState(false);
+
+  const setPatientField  = (key: string, val: string) => setMapping(m => ({ ...m, patients:     { ...m.patients,     [key]: val } }));
+  const setAptField      = (key: string, val: string) => setMapping(m => ({ ...m, appointments: { ...m.appointments, [key]: val } }));
 
   const save = async () => {
     setSaving(true); setError(null);
@@ -137,8 +170,12 @@ function EditClientModal({ client, onClose, onSaved }: {
       const res = await fetch(`${API_BASE_URL}/admin/clients/${client.id}`, {
         method:'PUT',
         headers:{'Authorization':`Bearer ${getIdToken()}`,'Content-Type':'application/json'},
-        body: JSON.stringify({ clientName:form.clientName, industry:form.industry, plan:form.plan,
-          status:form.status, adminEmail:form.adminEmail, dataSource:{sheetId:form.sheetId} }),
+        body: JSON.stringify({
+          clientName:form.clientName, industry:form.industry, plan:form.plan,
+          status:form.status, adminEmail:form.adminEmail,
+          dataSource:{ sheetId:form.sheetId },
+          columnMapping: mapping,
+        }),
       });
       if (!res.ok) { const e=await res.json().catch(()=>({})); throw new Error(e.error||`Error ${res.status}`); }
       setSuccess(true);
@@ -149,54 +186,148 @@ function EditClientModal({ client, onClose, onSaved }: {
     finally { setSaving(false); }
   };
 
+  const inputCls = "w-full bg-white/[0.05] border border-white/[0.1] rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-blue-500/60 placeholder-gray-600 transition-colors font-mono";
+
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose}/>
-      <div className="relative w-full max-w-lg bg-[#080d1e] border border-white/[0.1] rounded-2xl shadow-2xl overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-5 border-b border-white/[0.08]">
+      <div className="relative w-full max-w-2xl bg-[#080d1e] border border-white/[0.1] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-5 border-b border-white/[0.08] shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 bg-gradient-to-br from-blue-600 to-purple-600 rounded-xl flex items-center justify-center text-white font-bold text-sm">{client.name[0]}</div>
             <div><p className="text-white font-semibold">Edit Configuration</p><p className="text-gray-500 text-xs">{client.name}</p></div>
           </div>
           <button onClick={onClose} className="text-gray-500 hover:text-white p-2 rounded-xl hover:bg-white/[0.05] transition-colors"><X size={18}/></button>
         </div>
-        <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
-          {([['Company Name','clientName','text'],['Industry','industry','text'],['Admin Email','adminEmail','email']] as [string,string,string][]).map(([label,key,type])=>(
-            <div key={key}>
-              <label className="text-gray-400 text-sm mb-1.5 block">{label}</label>
-              <input type={type} value={(form as any)[key]} onChange={e=>setForm(f=>({...f,[key]:e.target.value}))}
-                className="w-full bg-white/[0.05] border border-white/[0.1] rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-blue-500/60 placeholder-gray-600 transition-colors"/>
-            </div>
+
+        {/* Tab switcher */}
+        <div className="flex gap-1 px-6 pt-4 shrink-0">
+          {([['config','Client Config'],['mapping','Data Mapping']] as const).map(([id,label])=>(
+            <button key={id} onClick={()=>setActiveTab(id)}
+              className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${activeTab===id?'bg-blue-600 text-white':'bg-white/[0.05] text-gray-400 hover:text-white'}`}>
+              {label}
+              {id==='mapping' && <span className="ml-2 text-xs bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded-full">Required for dashboard</span>}
+            </button>
           ))}
-          <div>
-            <label className="text-gray-400 text-sm mb-1.5 block">Google Sheet ID</label>
-            <input type="text" value={form.sheetId} onChange={e=>setForm(f=>({...f,sheetId:e.target.value}))}
-              placeholder="1A9Zt_S1PhYcwRRy7jeZ4Kvj1dTSE6PCIOWjSNnwv61M"
-              className="w-full bg-blue-500/[0.08] border border-blue-500/30 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-blue-500/70 placeholder-gray-600 transition-colors font-mono"/>
-            <p className="text-gray-600 text-xs mt-1">Found in Sheets URL: /spreadsheets/d/<span className="text-blue-500">SHEET_ID</span>/edit</p>
-          </div>
-          <div>
-            <label className="text-gray-400 text-sm mb-1.5 block">Plan</label>
-            <div className="grid grid-cols-3 gap-2">
-              {(['Free','Pro','Enterprise'] as const).map(p=>(
-                <button key={p} onClick={()=>setForm(f=>({...f,plan:p}))}
-                  className={`py-2.5 rounded-xl text-sm font-medium transition-all ${form.plan===p ? p==='Free'?'bg-gray-600 text-white':p==='Pro'?'bg-blue-600 text-white':'bg-purple-600 text-white' : 'bg-white/[0.05] border border-white/[0.08] text-gray-400 hover:text-white'}`}>{p}</button>
-              ))}
+        </div>
+
+        {/* Scrollable body */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+
+          {/* ── CLIENT CONFIG TAB ── */}
+          {activeTab === 'config' && (<>
+            {([['Company Name','clientName','text'],['Industry','industry','text'],['Admin Email','adminEmail','email']] as [string,string,string][]).map(([label,key,type])=>(
+              <div key={key}>
+                <label className="text-gray-400 text-sm mb-1.5 block">{label}</label>
+                <input type={type} value={(form as any)[key]} onChange={e=>setForm(f=>({...f,[key]:e.target.value}))}
+                  className="w-full bg-white/[0.05] border border-white/[0.1] rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-blue-500/60 placeholder-gray-600 transition-colors"/>
+              </div>
+            ))}
+            <div>
+              <label className="text-gray-400 text-sm mb-1.5 block">Google Sheet ID</label>
+              <input type="text" value={form.sheetId} onChange={e=>setForm(f=>({...f,sheetId:e.target.value}))}
+                placeholder="1A9Zt_S1PhYcwRRy7jeZ4Kvj1dTSE6PCIOWjSNnwv61M"
+                className="w-full bg-blue-500/[0.08] border border-blue-500/30 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-blue-500/70 placeholder-gray-600 transition-colors font-mono"/>
+              <p className="text-gray-600 text-xs mt-1">Found in Sheets URL: /spreadsheets/d/<span className="text-blue-500">SHEET_ID</span>/edit</p>
             </div>
-          </div>
-          <div>
-            <label className="text-gray-400 text-sm mb-1.5 block">Status</label>
-            <div className="grid grid-cols-3 gap-2">
-              {(['active','inactive','pending'] as const).map(s=>(
-                <button key={s} onClick={()=>setForm(f=>({...f,status:s}))}
-                  className={`py-2.5 rounded-xl text-sm font-medium capitalize transition-all ${form.status===s ? s==='active'?'bg-emerald-600 text-white':s==='inactive'?'bg-red-600 text-white':'bg-amber-600 text-white' : 'bg-white/[0.05] border border-white/[0.08] text-gray-400 hover:text-white'}`}>{s}</button>
-              ))}
+            <div>
+              <label className="text-gray-400 text-sm mb-1.5 block">Plan</label>
+              <div className="grid grid-cols-3 gap-2">
+                {(['Free','Pro','Enterprise'] as const).map(p=>(
+                  <button key={p} onClick={()=>setForm(f=>({...f,plan:p}))}
+                    className={`py-2.5 rounded-xl text-sm font-medium transition-all ${form.plan===p ? p==='Free'?'bg-gray-600 text-white':p==='Pro'?'bg-blue-600 text-white':'bg-purple-600 text-white' : 'bg-white/[0.05] border border-white/[0.08] text-gray-400 hover:text-white'}`}>{p}</button>
+                ))}
+              </div>
             </div>
-          </div>
+            <div>
+              <label className="text-gray-400 text-sm mb-1.5 block">Status</label>
+              <div className="grid grid-cols-3 gap-2">
+                {(['active','inactive','pending'] as const).map(s=>(
+                  <button key={s} onClick={()=>setForm(f=>({...f,status:s}))}
+                    className={`py-2.5 rounded-xl text-sm font-medium capitalize transition-all ${form.status===s ? s==='active'?'bg-emerald-600 text-white':s==='inactive'?'bg-red-600 text-white':'bg-amber-600 text-white' : 'bg-white/[0.05] border border-white/[0.08] text-gray-400 hover:text-white'}`}>{s}</button>
+                ))}
+              </div>
+            </div>
+          </>)}
+
+          {/* ── DATA MAPPING TAB ── */}
+          {activeTab === 'mapping' && (<>
+            <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl px-4 py-3 flex items-start gap-2">
+              <AlertCircle size={14} className="text-blue-400 shrink-0 mt-0.5"/>
+              <p className="text-blue-300 text-xs">Enter the exact column header names from this client's Google Sheet. These are case-sensitive. The dashboard won't load data until this is configured.</p>
+            </div>
+
+            {/* Patients tab */}
+            <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-4 space-y-3">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-2 h-2 bg-blue-400 rounded-full"/>
+                <p className="text-white text-sm font-semibold">Patients Tab</p>
+              </div>
+              <div>
+                <label className="text-gray-500 text-xs mb-1 block">Tab name in the spreadsheet</label>
+                <input value={mapping.patientsTab} onChange={e=>setMapping(m=>({...m,patientsTab:e.target.value}))}
+                  placeholder="Patients" className={inputCls}/>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                {([
+                  ['id',        'Patient ID column'],
+                  ['firstName', 'First name column'],
+                  ['lastName',  'Last name column'],
+                  ['dob',       'Date of birth column'],
+                  ['phone',     'Phone column'],
+                  ['email',     'Email column'],
+                  ['lastVisit', 'Last visit column'],
+                  ['flag',      'Flag column'],
+                ] as [string,string][]).map(([key,label])=>(
+                  <div key={key}>
+                    <label className="text-gray-500 text-xs mb-1 block">{label}</label>
+                    <input value={(mapping.patients as any)[key]} onChange={e=>setPatientField(key,e.target.value)}
+                      placeholder={key} className={inputCls}/>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Appointments tab */}
+            <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-4 space-y-3">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-2 h-2 bg-purple-400 rounded-full"/>
+                <p className="text-white text-sm font-semibold">Appointments Tab</p>
+              </div>
+              <div>
+                <label className="text-gray-500 text-xs mb-1 block">Tab name in the spreadsheet</label>
+                <input value={mapping.appointmentsTab} onChange={e=>setMapping(m=>({...m,appointmentsTab:e.target.value}))}
+                  placeholder="Appointments" className={inputCls}/>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                {([
+                  ['id',        'Slot ID column'],
+                  ['date',      'Date column'],
+                  ['time',      'Time column'],
+                  ['duration',  'Duration column'],
+                  ['doctor',    'Doctor column'],
+                  ['type',      'Appointment type column'],
+                  ['status',    'Status column'],
+                  ['patientId', 'Patient ID column (for linking)'],
+                ] as [string,string][]).map(([key,label])=>(
+                  <div key={key}>
+                    <label className="text-gray-500 text-xs mb-1 block">{label}</label>
+                    <input value={(mapping.appointments as any)[key]} onChange={e=>setAptField(key,e.target.value)}
+                      placeholder={key} className={inputCls}/>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>)}
+
           {error && <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/25 rounded-xl px-4 py-3"><AlertCircle size={15} className="text-red-400 shrink-0"/><p className="text-red-400 text-sm">{error}</p></div>}
           {success && <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/25 rounded-xl px-4 py-3"><CheckCircle size={15} className="text-emerald-400 shrink-0"/><p className="text-emerald-400 text-sm">Saved successfully!</p></div>}
         </div>
-        <div className="flex gap-3 px-6 py-4 border-t border-white/[0.08]">
+
+        {/* Footer */}
+        <div className="flex gap-3 px-6 py-4 border-t border-white/[0.08] shrink-0">
           <button onClick={save} disabled={saving||success}
             className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 disabled:cursor-not-allowed text-white py-3 rounded-xl text-sm font-medium transition-colors">
             {saving ? <Loader2 size={15} className="animate-spin"/> : <Save size={15}/>}
