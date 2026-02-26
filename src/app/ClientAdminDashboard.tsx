@@ -424,7 +424,7 @@ export function ClientAdminDashboard({ userEmail, userName, onLogout }: ClientAd
   const loadData = async () => {
     setLoading(true); setError(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/admin/sheet-data`, {
+      const res = await fetch(`${API_BASE_URL}/client/sheet-data`, {
         headers: { Authorization: `Bearer ${getIdToken()}` },
       });
       const json = await res.json();
