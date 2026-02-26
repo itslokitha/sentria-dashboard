@@ -29,28 +29,39 @@ interface Patient {
 }
 
 interface SheetStats {
-  totalPatients: number; totalAppointments: number;
-  appointmentsToday: number; appointmentsThisWeek: number;
-  appointmentsThisMonth: number; upcomingCount: number;
-  flaggedPatients: number;
+  // Lambda returns these names
+  totalPrimary: number; totalSecondary: number;
+  primaryToday: number; primaryThisWeek: number;
+  primaryThisMonth: number; upcomingCount: number;
+  flaggedSecondary: number;
   byStatus: Record<string, number>;
   byDoctor: Record<string, number>;
   byType: Record<string, number>;
+  // Legacy fallback names
+  totalPatients?: number; totalAppointments?: number;
+  appointmentsToday?: number; appointmentsThisWeek?: number;
+  flaggedPatients?: number;
 }
 
 interface SheetData {
   clientId: string; clientName: string;
   stats: SheetStats;
-  appointments: Appointment[];
-  patients: Patient[];
+  primary: Appointment[];
+  secondary: Patient[];
+  tabLabels: { primary: string; secondary: string | null };
+  // Legacy fallbacks
+  appointments?: Appointment[];
+  patients?: Patient[];
 }
 
-// ── Nav ───────────────────────────────────────────────────────────────────
-const NAV = [
-  { id: 'overview',     icon: LayoutDashboard, label: 'Overview' },
-  { id: 'appointments', icon: Calendar,         label: 'Appointments' },
-  { id: 'patients',     icon: Users,            label: 'Patients' },
-];
+// ── Nav (dynamic labels from sheet config) ───────────────────────────────
+function buildNav(tabLabels?: { primary: string; secondary: string | null }) {
+  return [
+    { id: 'overview',   icon: LayoutDashboard, label: 'Overview' },
+    { id: 'primary',    icon: Calendar,         label: tabLabels?.primary   || 'Records' },
+    { id: 'secondary',  icon: Users,            label: tabLabels?.secondary || 'Contacts' },
+  ];
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 function statusColor(s: string) {
@@ -86,10 +97,10 @@ function StatCard({ title, value, sub, icon: Icon, color }: {
 
 // ── Overview Tab ──────────────────────────────────────────────────────────
 function OverviewTab({ data, userName }: { data: SheetData; userName: string }) {
-  const stats = data.stats || { totalPatients: 0, totalAppointments: 0, appointmentsToday: 0, appointmentsThisWeek: 0, appointmentsThisMonth: 0, upcomingCount: 0, flaggedPatients: 0, byStatus: {}, byDoctor: {}, byType: {} };
-  const appointments = data.appointments || [];
+  const { stats } = data;
+  const primary = data.primary || data.appointments || [];
   const today = new Date().toISOString().split('T')[0];
-  const upcoming = appointments.filter(a => (a.date||'') >= today).slice(0, 8);
+  const upcoming = primary.filter(a => (a.date||'') >= today).slice(0, 8);
   const topDoctors = Object.entries(stats.byDoctor).sort((a,b)=>b[1]-a[1]).slice(0, 5);
   const topTypes   = Object.entries(stats.byType).sort((a,b)=>b[1]-a[1]).slice(0, 5);
   const hour = new Date().getHours();
@@ -105,21 +116,21 @@ function OverviewTab({ data, userName }: { data: SheetData; userName: string }) 
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Appointments Today"  value={stats.appointmentsToday}    icon={Calendar}    color="blue"/>
-        <StatCard title="This Week"           value={stats.appointmentsThisWeek} icon={Activity}    color="purple"/>
-        <StatCard title="Total Patients"      value={stats.totalPatients}        icon={Users}       color="emerald"/>
-        <StatCard title="Flagged Patients"    value={stats.flaggedPatients}      icon={Flag}        color={stats.flaggedPatients>0?'red':'amber'}/>
+        <StatCard title={`${data.tabLabels?.primary||'Records'} Today`}  value={stats.primaryToday ?? stats.appointmentsToday ?? 0}    icon={Calendar}    color="blue"/>
+        <StatCard title="This Week"           value={stats.primaryThisWeek ?? stats.appointmentsThisWeek ?? 0} icon={Activity}    color="purple"/>
+        <StatCard title={`Total ${data.tabLabels?.secondary||'Contacts'}`}  value={stats.totalSecondary ?? stats.totalPatients ?? 0}        icon={Users}       color="emerald"/>
+        <StatCard title="Flagged"    value={stats.flaggedSecondary ?? stats.flaggedPatients ?? 0}      icon={Flag}        color={(stats.flaggedSecondary ?? stats.flaggedPatients ?? 0)>0?'red':'amber'}/>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Upcoming appointments */}
         <div className="lg:col-span-2 bg-white/[0.03] border border-white/[0.08] rounded-2xl overflow-hidden">
           <div className="px-5 py-4 border-b border-white/[0.06] flex items-center justify-between">
-            <h3 className="text-white font-semibold">Upcoming Appointments</h3>
+            <h3 className="text-white font-semibold">Upcoming {data.tabLabels?.primary||'Records'}</h3>
             <span className="text-gray-500 text-xs">{stats.upcomingCount} total</span>
           </div>
           {upcoming.length === 0 ? (
-            <div className="text-center py-10 text-gray-600 text-sm">No upcoming appointments</div>
+            <div className="text-center py-10 text-gray-600 text-sm">No upcoming {data.tabLabels?.primary||'records'}</div>
           ) : (
             <div className="divide-y divide-white/[0.04]">
               {upcoming.map((apt, i) => (
@@ -162,7 +173,7 @@ function OverviewTab({ data, userName }: { data: SheetData; userName: string }) 
             {topTypes.length === 0 ? <p className="text-gray-600 text-sm">No data</p> : (
               <div className="space-y-2.5">
                 {topTypes.map(([type,n])=>{
-                  const pct = Math.round((n/stats.totalAppointments)*100);
+                  const pct = Math.round((n/(stats.totalPrimary||stats.totalAppointments||1))*100);
                   return (
                     <div key={type}>
                       <div className="flex justify-between text-xs mb-1">
@@ -203,7 +214,7 @@ function OverviewTab({ data, userName }: { data: SheetData; userName: string }) 
 }
 
 // ── Appointments Tab ───────────────────────────────────────────────────────
-function AppointmentsTab({ appointments }: { appointments: Appointment[] }) {
+function AppointmentsTab({ appointments, label = 'Records' }: { appointments: Appointment[]; label?: string }) {
   const [search, setSearch]   = useState('');
   const [statusF, setStatusF] = useState('all');
   const [doctorF, setDoctorF] = useState('all');
@@ -230,7 +241,7 @@ function AppointmentsTab({ appointments }: { appointments: Appointment[] }) {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-3xl font-bold bg-gradient-to-r from-blue-300 to-purple-400 bg-clip-text text-transparent">Appointments</h2>
+          <h2 className="text-3xl font-bold bg-gradient-to-r from-blue-300 to-purple-400 bg-clip-text text-transparent">{label}</h2>
           <p className="text-gray-400 mt-1">{appointments.length} total records from Google Sheet</p>
         </div>
         <div className="flex gap-2">
@@ -296,7 +307,7 @@ function AppointmentsTab({ appointments }: { appointments: Appointment[] }) {
 }
 
 // ── Patients Tab ───────────────────────────────────────────────────────────
-function PatientsTab({ patients }: { patients: Patient[] }) {
+function PatientsTab({ patients, label = 'Contacts' }: { patients: Patient[]; label?: string }) {
   const [search, setSearch]   = useState('');
   const [flagOnly, setFlagOnly] = useState(false);
 
@@ -316,8 +327,8 @@ function PatientsTab({ patients }: { patients: Patient[] }) {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-3xl font-bold bg-gradient-to-r from-blue-300 to-purple-400 bg-clip-text text-transparent">Patients</h2>
-          <p className="text-gray-400 mt-1">{patients.length} patients · {flaggedCount} flagged</p>
+          <h2 className="text-3xl font-bold bg-gradient-to-r from-blue-300 to-purple-400 bg-clip-text text-transparent">{label}</h2>
+          <p className="text-gray-400 mt-1">{patients.length} {label.toLowerCase()} · {flaggedCount} flagged</p>
         </div>
         {flaggedCount > 0 && (
           <button onClick={()=>setFlagOnly(f=>!f)}
@@ -413,15 +424,11 @@ export function ClientAdminDashboard({ userEmail, userName, onLogout }: ClientAd
   const loadData = async () => {
     setLoading(true); setError(null);
     try {
-      const token = getIdToken();
-      if (!token) throw new Error('Session expired. Please sign in again.');
-      const res = await fetch(`${API_BASE_URL}/client/sheet-data`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const res = await fetch(`${API_BASE_URL}/admin/sheet-data`, {
+        headers: { Authorization: `Bearer ${getIdToken()}` },
       });
-      let json: any;
-      try { json = await res.json(); } catch { throw new Error(`Server returned invalid response (${res.status})`); }
-      if (!res.ok) throw new Error(json?.error||`API error ${res.status}`);
-      if (!json || !json.stats) throw new Error('Received empty data from server. The sheet may not be configured yet.');
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error||`API ${res.status}`);
       setData(json);
       setLastRefresh(new Date());
     } catch(e:any) { setError(e.message||'Failed to load data.'); }
@@ -450,7 +457,7 @@ export function ClientAdminDashboard({ userEmail, userName, onLogout }: ClientAd
         </div>
 
         <nav className="flex-1 p-4 space-y-1">
-          {NAV.map(({id,icon:Icon,label})=>(
+          {buildNav(data?.tabLabels).map(({id,icon:Icon,label})=>(
             <button key={id} onClick={()=>setActiveTab(id)}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
                 activeTab===id?'bg-gradient-to-r from-blue-600/20 to-purple-600/15 text-white border border-blue-500/25':'text-gray-400 hover:text-white hover:bg-white/[0.04]'
@@ -493,10 +500,10 @@ export function ClientAdminDashboard({ userEmail, userName, onLogout }: ClientAd
             <ClipboardList size={14} className="text-blue-400"/>
             <span className="text-blue-400 font-medium">{data?.clientName||'Dashboard'}</span>
             <ChevronRight size={14}/>
-            <span className="text-white capitalize">{NAV.find(n=>n.id===activeTab)?.label}</span>
+            <span className="text-white capitalize">{buildNav(data?.tabLabels).find(n=>n.id===activeTab)?.label}</span>
           </div>
           <div className="ml-auto flex items-center gap-3">
-            {data && <span className="text-gray-500 text-xs">{data.stats.totalAppointments} appointments · {data.stats.totalPatients} patients</span>}
+            {data && <span className="text-gray-500 text-xs">{data.stats.totalPrimary ?? data.stats.totalAppointments ?? 0} records · {data.stats.totalSecondary ?? data.stats.totalPatients ?? 0} contacts</span>}
             <button onClick={loadData} disabled={loading}
               className="flex items-center gap-2 bg-white/[0.04] border border-white/[0.08] rounded-xl px-4 py-2 text-gray-400 hover:text-white text-sm transition-colors disabled:opacity-50">
               <RefreshCw size={14} className={loading?'animate-spin':''}/> Refresh
@@ -515,17 +522,14 @@ export function ClientAdminDashboard({ userEmail, userName, onLogout }: ClientAd
           ) : error ? (
             <ErrorState message={error} onRetry={loadData}/>
           ) : data ? (<>
-            {activeTab==='overview'     && <OverviewTab     data={data} userName={userName}/>}
-            {activeTab==='appointments' && <AppointmentsTab appointments={data.appointments||[]}/>}
-            {activeTab==='patients'     && <PatientsTab     patients={data.patients||[]}/>}
-          </>) : (
-            <div className="flex items-center justify-center h-96">
-              <div className="text-center">
-                <div className="w-12 h-12 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin mx-auto mb-4"/>
-                <p className="text-gray-400 text-sm">Preparing your dashboard…</p>
-              </div>
-            </div>
-          )}
+            {activeTab==='overview'  && <OverviewTab  data={data} userName={userName}/>}
+            {activeTab==='primary'   && <AppointmentsTab
+              appointments={data.primary || data.appointments || []}
+              label={data.tabLabels?.primary || 'Records'}/>}
+            {activeTab==='secondary' && <PatientsTab
+              patients={data.secondary || data.patients || []}
+              label={data.tabLabels?.secondary || 'Contacts'}/>}
+          </>) : null}
         </div>
       </main>
 
