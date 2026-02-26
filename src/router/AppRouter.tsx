@@ -1,75 +1,92 @@
 // ============================================================
 // SENTRIA — App Router
-// Role-based routing:
-//   super-admin    → /admin     → SuperAdminDashboard
-//   client-admin   → /dashboard → ClientAdminDashboard
-//   client-user    → /dashboard → DashboardApp (existing)
-//   unauthenticated→ /login
+// Unifies the dev2 marketing website and dev1 dashboard
+// under React Router v7. Public routes serve the website.
+// /dashboard/* routes are protected and require auth.
+// /admin/* routes are super-admin only.
 // ============================================================
 
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { useAuth } from '../auth/AuthContext';
-import { SuperAdminDashboard } from '../admin/SuperAdminDashboard';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router';
+import { AuthProvider } from '../auth/AuthContext';
+import { ProtectedRoute, AdminRoute } from '../auth/ProtectedRoute';
+
+// ── dev2: Marketing Website Pages ────────────────────────────────────────────
+import { Navigation } from '../components/Navigation';
+import { Footer } from '../components/Footer';
+import { ScrollToTop } from '../components/ScrollToTop';
+import { LoadingScreen } from '../components/LoadingScreen';
+import { HomePage } from '../pages/HomePage';
+import { ProductsPage } from '../pages/ProductsPage';
+import { SolutionsPage } from '../pages/SolutionsPage';
+import { PlatformOverviewPage } from '../pages/PlatformOverviewPage';
+import { VoiceTechnologyPage } from '../pages/VoiceTechnologyPage';
+import { PricingPage } from '../pages/PricingPage';
+import { ResourcesPage } from '../pages/ResourcesPage';
+import { CompanyPage } from '../pages/CompanyPage';
+import { AboutPage } from '../pages/AboutPage';
+import { CareersPage } from '../pages/CareersPage';
+import { ContactPage } from '../pages/ContactPage';
+import { ProjectEmilyPage } from '../pages/ProjectEmilyPage';
+import { IndustriesPage } from '../pages/IndustriesPage';
+import { HealthcarePage } from '../pages/HealthcarePage';
+import { FinancePage } from '../pages/FinancePage';
+import { RetailPage } from '../pages/RetailPage';
+import { RealEstatePage } from '../pages/RealEstatePage';
+import { HospitalityPage } from '../pages/HospitalityPage';
+import { ProfessionalPage } from '../pages/ProfessionalPage';
+import { InsurancePage } from '../pages/InsurancePage';
+import { AutomotivePage } from '../pages/AutomotivePage';
+import { EducationPage } from '../pages/EducationPage';
+import { LogisticsPage } from '../pages/LogisticsPage';
+import { TelecomPage } from '../pages/TelecomPage';
+import { ConstructionPage } from '../pages/ConstructionPage';
+import { PrivacyPage } from '../pages/PrivacyPage';
+import { TermsPage } from '../pages/TermsPage';
+import { SecurityPage } from '../pages/SecurityPage';
+import { CompliancePage } from '../pages/CompliancePage';
+import { IntegrationsPage } from '../pages/IntegrationsPage';
+import { PartnersPage } from '../pages/PartnersPage';
+import { LoginPage } from '../pages/LoginPage';
+import { useState } from 'react';
+
+// ── dev1: Dashboard ───────────────────────────────────────────────────────────
+import { DashboardApp } from '../app/DashboardApp';
 import { ClientAdminDashboard } from '../app/ClientAdminDashboard';
+import { SuperAdminDashboard } from '../admin/SuperAdminDashboard';
+import { useAuth } from '../auth/AuthContext';
 
+// ── Admin Panel ───────────────────────────────────────────────────────────────
+import { AdminPanel } from '../admin/AdminPanel';
 
-
-// ── Full-screen loading state ─────────────────────────────────────────────
-function SentriaLoader() {
+// ── Website layout wrapper (Navigation + Footer) ──────────────────────────────
+function WebsiteLayout({ children }: { children: React.ReactNode }) {
+  const [currentPage, setCurrentPage] = useState('');
   return (
-    <div className="fixed inset-0 bg-[#070A12] flex flex-col items-center justify-center gap-4">
-      <svg viewBox="0 0 480 120" className="w-48 h-auto animate-pulse" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <linearGradient id="loaderGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#d4d5ed" />
-            <stop offset="50%" stopColor="#5b5fa8" />
-            <stop offset="100%" stopColor="#1a2570" />
-          </linearGradient>
-        </defs>
-        <text x="240" y="75" fontFamily="Arial, sans-serif" fontSize="72" fontWeight="700"
-          textAnchor="middle" letterSpacing="3" fill="url(#loaderGrad)">SENTRIA</text>
-      </svg>
-      <div className="flex gap-1.5">
-        {[0, 1, 2].map(i => (
-          <div key={i} className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce"
-            style={{ animationDelay: `${i * 0.15}s` }} />
-        ))}
-      </div>
+    <div className="min-h-screen bg-[#070A12] text-white">
+      <Navigation currentPage={currentPage} onNavigate={setCurrentPage} />
+      <main>{children}</main>
+      <Footer onNavigate={setCurrentPage} />
+      <ScrollToTop />
     </div>
   );
 }
 
-// ── Route guard: redirects to login if not authenticated ─────────────────
-function RequireAuth({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuth();
-  if (isLoading) return <SentriaLoader />;
-  if (!isAuthenticated) return <Navigate to="/login" replace />;
-  return <>{children}</>;
-}
-
-// ── Smart /dashboard redirect based on role ───────────────────────────────
+// ── Role-based dashboard switcher ────────────────────────────────────────────
 function RoleBasedDashboard() {
   const { session, logout } = useAuth();
-
-  if (!session) return <Navigate to="/login" replace />;
+  if (!session) return null;
 
   const role = session.user?.role || 'client-user';
   const userName = `${session.user?.firstName || ''} ${session.user?.lastName || ''}`.trim() || 'User';
   const userEmail = session.user?.email || '';
-  const clientName = session.config?.clientName || 'Your Company';
+  const clientName = session.config?.clientName || session.config?.dashboard?.branding?.companyName || 'Your Company';
   const sheetId = session.config?.dataSource?.sheetId || '';
 
   if (role === 'super-admin') {
-    return (
-      <SuperAdminDashboard
-        userEmail={userEmail}
-        userName={userName}
-        onLogout={logout}
-      />
-    );
+    return <SuperAdminDashboard userEmail={userEmail} userName={userName} onLogout={logout} />;
   }
 
-  if (role === 'client-admin') {
+  if (role === 'client-admin' || role === 'client-user') {
     return (
       <ClientAdminDashboard
         userEmail={userEmail}
@@ -77,89 +94,90 @@ function RoleBasedDashboard() {
         clientName={clientName}
         sheetId={sheetId}
         onLogout={logout}
+        readOnly={role === 'client-user'}
       />
     );
   }
 
-  // client-user: same dashboard as client-admin, read-only (no admin controls)
-  return (
-    <ClientAdminDashboard
-      userEmail={userEmail}
-      userName={userName}
-      clientName={clientName}
-      sheetId={sheetId}
-      onLogout={logout}
-      readOnly={true}
-    />
-  );
+  // Fallback to legacy DashboardApp
+  return <DashboardApp />;
 }
 
-// ── Login page ────────────────────────────────────────────────────────────
-// Imported from wherever it lives in your project — adjust path if needed.
-import { LoginPage } from '../auth/LoginPage';
-
-// ── Root router ────────────────────────────────────────────────────────────
+// ── Root App ──────────────────────────────────────────────────────────────────
 export function AppRouter() {
+  const [showLoading, setShowLoading] = useState(true);
+
   return (
     <BrowserRouter>
-      <Routes>
-        {/* Public */}
-        <Route path="/login" element={<PublicLoginRoute />} />
+      <AuthProvider>
+        {showLoading && <LoadingScreen onComplete={() => setShowLoading(false)} />}
+        <Routes>
 
-        {/* Protected — role-based rendering */}
-        <Route
-          path="/dashboard"
-          element={
-            <RequireAuth>
-              <RoleBasedDashboard />
-            </RequireAuth>
-          }
-        />
+          {/* ── Public Website Routes ───────────────────────────────────── */}
+          <Route path="/" element={<WebsiteLayout><HomePage onNavigate={() => {}} /></WebsiteLayout>} />
+          <Route path="/platform" element={<WebsiteLayout><ProductsPage /></WebsiteLayout>} />
+          <Route path="/platform/overview" element={<WebsiteLayout><PlatformOverviewPage onNavigate={() => {}} /></WebsiteLayout>} />
+          <Route path="/platform/voice-technology" element={<WebsiteLayout><VoiceTechnologyPage onNavigate={() => {}} /></WebsiteLayout>} />
+          <Route path="/solutions" element={<WebsiteLayout><SolutionsPage onNavigate={() => {}} /></WebsiteLayout>} />
+          <Route path="/pricing" element={<WebsiteLayout><PricingPage onNavigate={() => {}} /></WebsiteLayout>} />
+          <Route path="/resources" element={<WebsiteLayout><ResourcesPage /></WebsiteLayout>} />
+          <Route path="/company" element={<WebsiteLayout><CompanyPage /></WebsiteLayout>} />
+          <Route path="/about" element={<WebsiteLayout><AboutPage onNavigate={() => {}} /></WebsiteLayout>} />
+          <Route path="/careers" element={<WebsiteLayout><CareersPage onNavigate={() => {}} /></WebsiteLayout>} />
+          <Route path="/contact" element={<WebsiteLayout><ContactPage onNavigate={() => {}} /></WebsiteLayout>} />
+          <Route path="/emily" element={<WebsiteLayout><ProjectEmilyPage onNavigate={() => {}} /></WebsiteLayout>} />
+          <Route path="/integrations" element={<WebsiteLayout><IntegrationsPage onNavigate={() => {}} /></WebsiteLayout>} />
+          <Route path="/partners" element={<WebsiteLayout><PartnersPage /></WebsiteLayout>} />
 
-        {/* /admin alias — super-admin only, redirects others to /dashboard */}
-        <Route
-          path="/admin"
-          element={
-            <RequireAuth>
-              <AdminOnlyRoute />
-            </RequireAuth>
-          }
-        />
+          {/* Industries */}
+          <Route path="/industries" element={<WebsiteLayout><IndustriesPage onNavigate={() => {}} /></WebsiteLayout>} />
+          <Route path="/industries/healthcare" element={<WebsiteLayout><HealthcarePage onNavigate={() => {}} /></WebsiteLayout>} />
+          <Route path="/industries/finance" element={<WebsiteLayout><FinancePage onNavigate={() => {}} /></WebsiteLayout>} />
+          <Route path="/industries/retail" element={<WebsiteLayout><RetailPage onNavigate={() => {}} /></WebsiteLayout>} />
+          <Route path="/industries/real-estate" element={<WebsiteLayout><RealEstatePage onNavigate={() => {}} /></WebsiteLayout>} />
+          <Route path="/industries/hospitality" element={<WebsiteLayout><HospitalityPage onNavigate={() => {}} /></WebsiteLayout>} />
+          <Route path="/industries/professional" element={<WebsiteLayout><ProfessionalPage onNavigate={() => {}} /></WebsiteLayout>} />
+          <Route path="/industries/insurance" element={<WebsiteLayout><InsurancePage onNavigate={() => {}} /></WebsiteLayout>} />
+          <Route path="/industries/automotive" element={<WebsiteLayout><AutomotivePage onNavigate={() => {}} /></WebsiteLayout>} />
+          <Route path="/industries/education" element={<WebsiteLayout><EducationPage onNavigate={() => {}} /></WebsiteLayout>} />
+          <Route path="/industries/logistics" element={<WebsiteLayout><LogisticsPage onNavigate={() => {}} /></WebsiteLayout>} />
+          <Route path="/industries/telecom" element={<WebsiteLayout><TelecomPage onNavigate={() => {}} /></WebsiteLayout>} />
+          <Route path="/industries/construction" element={<WebsiteLayout><ConstructionPage onNavigate={() => {}} /></WebsiteLayout>} />
 
-        {/* Default redirect */}
-        <Route path="/" element={<DefaultRedirect />} />
-        <Route path="*" element={<DefaultRedirect />} />
-      </Routes>
+          {/* Legal */}
+          <Route path="/privacy" element={<WebsiteLayout><PrivacyPage /></WebsiteLayout>} />
+          <Route path="/terms" element={<WebsiteLayout><TermsPage /></WebsiteLayout>} />
+          <Route path="/security" element={<WebsiteLayout><SecurityPage /></WebsiteLayout>} />
+          <Route path="/compliance" element={<WebsiteLayout><CompliancePage /></WebsiteLayout>} />
+
+          {/* ── Auth Route ──────────────────────────────────────────────── */}
+          <Route path="/login" element={<LoginPage onNavigate={() => {}} />} />
+
+          {/* ── Protected Dashboard Routes ──────────────────────────────── */}
+          <Route
+            path="/dashboard/*"
+            element={
+              <ProtectedRoute>
+                <RoleBasedDashboard />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* ── Protected Admin Routes ──────────────────────────────────── */}
+          <Route
+            path="/admin/*"
+            element={
+              <AdminRoute>
+                <AdminPanel />
+              </AdminRoute>
+            }
+          />
+
+          {/* ── Fallback ────────────────────────────────────────────────── */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+
+        </Routes>
+      </AuthProvider>
     </BrowserRouter>
-  );
-}
-
-// ── Helpers ────────────────────────────────────────────────────────────────
-function DefaultRedirect() {
-  const { isAuthenticated, isLoading, session } = useAuth();
-  if (isLoading) return <SentriaLoader />;
-  if (!isAuthenticated) return <Navigate to="/login" replace />;
-  const role = session?.user?.role;
-  return <Navigate to="/dashboard" replace />;
-}
-
-function PublicLoginRoute() {
-  const { isAuthenticated, isLoading, session } = useAuth();
-  if (isLoading) return <SentriaLoader />;
-  if (isAuthenticated) return <Navigate to="/dashboard" replace />;
-  return <LoginPage />;
-}
-
-function AdminOnlyRoute() {
-  const { session, logout } = useAuth();
-  if (!session) return <Navigate to="/login" replace />;
-  if (session.user?.role !== 'super-admin') return <Navigate to="/dashboard" replace />;
-  const userName = `${session.user?.firstName || ''} ${session.user?.lastName || ''}`.trim() || 'Admin';
-  return (
-    <SuperAdminDashboard
-      userEmail={session.user?.email || ''}
-      userName={userName}
-      onLogout={logout}
-    />
   );
 }
