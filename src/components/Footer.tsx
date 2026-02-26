@@ -1,7 +1,8 @@
+import { usePageNavigate } from "../utils/pageRoutes";
 import logoImage from "figma:asset/3ca298a21007a50a7e4273fbaceaee5a09caa649.png";
 
 interface FooterProps {
-  onNavigate: (page: string) => void;
+  onNavigate?: (page: string) => void;
 }
 
 const footerLinks = {
@@ -18,9 +19,10 @@ const footerLinks = {
 };
 
 export function Footer({ onNavigate }: FooterProps) {
+  const routerNavigate = usePageNavigate();
+
   const handleLinkClick = (page: string) => {
-    onNavigate(page);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    routerNavigate(page);
   };
 
   return (

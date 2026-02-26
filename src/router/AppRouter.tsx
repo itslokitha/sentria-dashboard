@@ -6,9 +6,11 @@
 // /admin/* routes are super-admin only.
 // ============================================================
 
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router';
+import React, { useState, useCallback } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router';
 import { AuthProvider } from '../auth/AuthContext';
 import { ProtectedRoute, AdminRoute } from '../auth/ProtectedRoute';
+import { pageToPath } from '../utils/pageRoutes';
 
 // ── dev2: Marketing Website Pages ────────────────────────────────────────────
 import { Navigation } from '../components/Navigation';
@@ -47,7 +49,6 @@ import { CompliancePage } from '../pages/CompliancePage';
 import { IntegrationsPage } from '../pages/IntegrationsPage';
 import { PartnersPage } from '../pages/PartnersPage';
 import { LoginPage } from '../pages/LoginPage';
-import { useState } from 'react';
 
 // ── dev1: Dashboard ───────────────────────────────────────────────────────────
 import { DashboardApp } from '../app/DashboardApp';
@@ -58,14 +59,24 @@ import { useAuth } from '../auth/AuthContext';
 // ── Admin Panel ───────────────────────────────────────────────────────────────
 import { AdminPanel } from '../admin/AdminPanel';
 
-// ── Website layout wrapper (Navigation + Footer) ──────────────────────────────
-function WebsiteLayout({ children }: { children: React.ReactNode }) {
-  const [currentPage, setCurrentPage] = useState('');
+// ── Website page wrapper ────────────────────────────────────────────────────
+// Provides Navigation + Footer and injects a working onNavigate prop
+// into the child page component via cloneElement.
+function WebsitePage({ children }: { children: React.ReactElement }) {
+  const navigate = useNavigate();
+  const onNavigate = useCallback(
+    (page: string) => {
+      navigate(pageToPath(page));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    },
+    [navigate],
+  );
+
   return (
     <div className="min-h-screen bg-[#070A12] text-white">
-      <Navigation currentPage={currentPage} onNavigate={setCurrentPage} />
-      <main>{children}</main>
-      <Footer onNavigate={setCurrentPage} />
+      <Navigation />
+      <main>{React.cloneElement(children, { onNavigate })}</main>
+      <Footer />
       <ScrollToTop />
     </div>
   );
@@ -114,44 +125,44 @@ export function AppRouter() {
         <Routes>
 
           {/* ── Public Website Routes ───────────────────────────────────── */}
-          <Route path="/" element={<WebsiteLayout><HomePage onNavigate={() => {}} /></WebsiteLayout>} />
-          <Route path="/platform" element={<WebsiteLayout><ProductsPage /></WebsiteLayout>} />
-          <Route path="/platform/overview" element={<WebsiteLayout><PlatformOverviewPage onNavigate={() => {}} /></WebsiteLayout>} />
-          <Route path="/platform/voice-technology" element={<WebsiteLayout><VoiceTechnologyPage onNavigate={() => {}} /></WebsiteLayout>} />
-          <Route path="/solutions" element={<WebsiteLayout><SolutionsPage onNavigate={() => {}} /></WebsiteLayout>} />
-          <Route path="/pricing" element={<WebsiteLayout><PricingPage onNavigate={() => {}} /></WebsiteLayout>} />
-          <Route path="/resources" element={<WebsiteLayout><ResourcesPage /></WebsiteLayout>} />
-          <Route path="/company" element={<WebsiteLayout><CompanyPage /></WebsiteLayout>} />
-          <Route path="/about" element={<WebsiteLayout><AboutPage onNavigate={() => {}} /></WebsiteLayout>} />
-          <Route path="/careers" element={<WebsiteLayout><CareersPage onNavigate={() => {}} /></WebsiteLayout>} />
-          <Route path="/contact" element={<WebsiteLayout><ContactPage onNavigate={() => {}} /></WebsiteLayout>} />
-          <Route path="/emily" element={<WebsiteLayout><ProjectEmilyPage onNavigate={() => {}} /></WebsiteLayout>} />
-          <Route path="/integrations" element={<WebsiteLayout><IntegrationsPage onNavigate={() => {}} /></WebsiteLayout>} />
-          <Route path="/partners" element={<WebsiteLayout><PartnersPage /></WebsiteLayout>} />
+          <Route path="/" element={<WebsitePage><HomePage /></WebsitePage>} />
+          <Route path="/platform" element={<WebsitePage><ProductsPage /></WebsitePage>} />
+          <Route path="/platform/overview" element={<WebsitePage><PlatformOverviewPage /></WebsitePage>} />
+          <Route path="/platform/voice-technology" element={<WebsitePage><VoiceTechnologyPage /></WebsitePage>} />
+          <Route path="/solutions" element={<WebsitePage><SolutionsPage /></WebsitePage>} />
+          <Route path="/pricing" element={<WebsitePage><PricingPage /></WebsitePage>} />
+          <Route path="/resources" element={<WebsitePage><ResourcesPage /></WebsitePage>} />
+          <Route path="/company" element={<WebsitePage><CompanyPage /></WebsitePage>} />
+          <Route path="/about" element={<WebsitePage><AboutPage /></WebsitePage>} />
+          <Route path="/careers" element={<WebsitePage><CareersPage /></WebsitePage>} />
+          <Route path="/contact" element={<WebsitePage><ContactPage /></WebsitePage>} />
+          <Route path="/emily" element={<WebsitePage><ProjectEmilyPage /></WebsitePage>} />
+          <Route path="/integrations" element={<WebsitePage><IntegrationsPage /></WebsitePage>} />
+          <Route path="/partners" element={<WebsitePage><PartnersPage /></WebsitePage>} />
 
           {/* Industries */}
-          <Route path="/industries" element={<WebsiteLayout><IndustriesPage onNavigate={() => {}} /></WebsiteLayout>} />
-          <Route path="/industries/healthcare" element={<WebsiteLayout><HealthcarePage onNavigate={() => {}} /></WebsiteLayout>} />
-          <Route path="/industries/finance" element={<WebsiteLayout><FinancePage onNavigate={() => {}} /></WebsiteLayout>} />
-          <Route path="/industries/retail" element={<WebsiteLayout><RetailPage onNavigate={() => {}} /></WebsiteLayout>} />
-          <Route path="/industries/real-estate" element={<WebsiteLayout><RealEstatePage onNavigate={() => {}} /></WebsiteLayout>} />
-          <Route path="/industries/hospitality" element={<WebsiteLayout><HospitalityPage onNavigate={() => {}} /></WebsiteLayout>} />
-          <Route path="/industries/professional" element={<WebsiteLayout><ProfessionalPage onNavigate={() => {}} /></WebsiteLayout>} />
-          <Route path="/industries/insurance" element={<WebsiteLayout><InsurancePage onNavigate={() => {}} /></WebsiteLayout>} />
-          <Route path="/industries/automotive" element={<WebsiteLayout><AutomotivePage onNavigate={() => {}} /></WebsiteLayout>} />
-          <Route path="/industries/education" element={<WebsiteLayout><EducationPage onNavigate={() => {}} /></WebsiteLayout>} />
-          <Route path="/industries/logistics" element={<WebsiteLayout><LogisticsPage onNavigate={() => {}} /></WebsiteLayout>} />
-          <Route path="/industries/telecom" element={<WebsiteLayout><TelecomPage onNavigate={() => {}} /></WebsiteLayout>} />
-          <Route path="/industries/construction" element={<WebsiteLayout><ConstructionPage onNavigate={() => {}} /></WebsiteLayout>} />
+          <Route path="/industries" element={<WebsitePage><IndustriesPage /></WebsitePage>} />
+          <Route path="/industries/healthcare" element={<WebsitePage><HealthcarePage /></WebsitePage>} />
+          <Route path="/industries/finance" element={<WebsitePage><FinancePage /></WebsitePage>} />
+          <Route path="/industries/retail" element={<WebsitePage><RetailPage /></WebsitePage>} />
+          <Route path="/industries/real-estate" element={<WebsitePage><RealEstatePage /></WebsitePage>} />
+          <Route path="/industries/hospitality" element={<WebsitePage><HospitalityPage /></WebsitePage>} />
+          <Route path="/industries/professional" element={<WebsitePage><ProfessionalPage /></WebsitePage>} />
+          <Route path="/industries/insurance" element={<WebsitePage><InsurancePage /></WebsitePage>} />
+          <Route path="/industries/automotive" element={<WebsitePage><AutomotivePage /></WebsitePage>} />
+          <Route path="/industries/education" element={<WebsitePage><EducationPage /></WebsitePage>} />
+          <Route path="/industries/logistics" element={<WebsitePage><LogisticsPage /></WebsitePage>} />
+          <Route path="/industries/telecom" element={<WebsitePage><TelecomPage /></WebsitePage>} />
+          <Route path="/industries/construction" element={<WebsitePage><ConstructionPage /></WebsitePage>} />
 
           {/* Legal */}
-          <Route path="/privacy" element={<WebsiteLayout><PrivacyPage /></WebsiteLayout>} />
-          <Route path="/terms" element={<WebsiteLayout><TermsPage /></WebsiteLayout>} />
-          <Route path="/security" element={<WebsiteLayout><SecurityPage /></WebsiteLayout>} />
-          <Route path="/compliance" element={<WebsiteLayout><CompliancePage /></WebsiteLayout>} />
+          <Route path="/privacy" element={<WebsitePage><PrivacyPage /></WebsitePage>} />
+          <Route path="/terms" element={<WebsitePage><TermsPage /></WebsitePage>} />
+          <Route path="/security" element={<WebsitePage><SecurityPage /></WebsitePage>} />
+          <Route path="/compliance" element={<WebsitePage><CompliancePage /></WebsitePage>} />
 
           {/* ── Auth Route ──────────────────────────────────────────────── */}
-          <Route path="/login" element={<LoginPage onNavigate={() => {}} />} />
+          <Route path="/login" element={<LoginPage />} />
 
           {/* ── Protected Dashboard Routes ──────────────────────────────── */}
           <Route

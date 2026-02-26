@@ -2,19 +2,21 @@ import { useState, useEffect } from "react";
 import { Button } from "./ui/button";
 import { Menu, X, ChevronDown } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { usePageNavigate } from "../utils/pageRoutes";
 import logoImage from "figma:asset/3ca298a21007a50a7e4273fbaceaee5a09caa649.png";
 
 interface NavigationProps {
-  currentPage: string;
-  onNavigate: (page: string) => void;
+  currentPage?: string;
+  onNavigate?: (page: string) => void;
 }
 
 export function Navigation({ currentPage, onNavigate }: NavigationProps) {
+  const routerNavigate = usePageNavigate();
   const [isOpen, setIsOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [mobileOpenDropdown, setMobileOpenDropdown] = useState<string | null>(null);
-  
+
   useEffect(() => {
     const handleScroll = () => {
       setIsScrolled(window.scrollY > 20);
@@ -63,11 +65,10 @@ export function Navigation({ currentPage, onNavigate }: NavigationProps) {
   ];
   
   const handleNavClick = (page: string) => {
-    onNavigate(page);
+    routerNavigate(page);
     setIsOpen(false);
     setOpenDropdown(null);
     setMobileOpenDropdown(null);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
   
   return (
