@@ -6,9 +6,9 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import {
-  LayoutDashboard, Users, Calendar, LogOut, ChevronRight,
+  LayoutDashboard, Users, Calendar, LogOut, ChevronRight, ChevronLeft,
   Search, RefreshCw, AlertCircle, Flag, Stethoscope,
-  Activity, ClipboardList
+  Activity, ClipboardList, X
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { API_BASE_URL } from '../auth/cognitoConfig';
@@ -56,11 +56,15 @@ interface SheetData {
 
 // ── Nav (dynamic labels from sheet config) ───────────────────────────────
 function buildNav(tabLabels?: { primary: string; secondary: string | null }) {
-  return [
-    { id: 'overview',   icon: LayoutDashboard, label: 'Overview' },
-    { id: 'primary',    icon: Calendar,         label: tabLabels?.primary   || 'Records' },
-    { id: 'secondary',  icon: Users,            label: tabLabels?.secondary || 'Contacts' },
+  const nav = [
+    { id: 'overview',  icon: LayoutDashboard, label: 'Overview' },
+    { id: 'primary',   icon: Calendar,        label: tabLabels?.primary || 'Records' },
   ];
+  // Only show secondary tab if there is a secondary sheet configured
+  if (!tabLabels || tabLabels.secondary) {
+    nav.push({ id: 'secondary', icon: Users, label: tabLabels?.secondary || 'Contacts' });
+  }
+  return nav;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -91,6 +95,160 @@ function StatCard({ title, value, sub, icon: Icon, color }: {
       <p className="text-3xl font-bold text-white mb-0.5">{value}</p>
       <p className="text-gray-400 text-sm">{title}</p>
       {sub && <p className="text-gray-600 text-xs mt-1">{sub}</p>}
+    </div>
+  );
+}
+
+
+// ── Mini Calendar ─────────────────────────────────────────────────────────
+function MiniCalendar({ appointments, primaryLabel }: { appointments: Appointment[]; primaryLabel: string }) {
+  const [viewDate, setViewDate]     = useState(new Date());
+  const [selectedDay, setSelectedDay] = useState<string|null>(null);
+
+  // Parse a date string — handles ISO with timezone and plain YYYY-MM-DD
+  const parseDate = (raw: string): string | null => {
+    if (!raw) return null;
+    // ISO with timezone: take the date part before T
+    const iso = raw.includes('T') ? raw.split('T')[0] : raw.trim();
+    return /^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso : null;
+  };
+
+  // Build a map: dateStr → appointments[]
+  const apptMap = useMemo(() => {
+    const m: Record<string, Appointment[]> = {};
+    appointments.forEach(a => {
+      const d = parseDate(a.date || '');
+      if (d) { if (!m[d]) m[d] = []; m[d].push(a); }
+    });
+    return m;
+  }, [appointments]);
+
+  const year  = viewDate.getFullYear();
+  const month = viewDate.getMonth();
+  const monthLabel = viewDate.toLocaleString('default', { month: 'long', year: 'numeric' });
+  const firstDow = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  const prevMonth = () => setViewDate(new Date(year, month - 1, 1));
+  const nextMonth = () => setViewDate(new Date(year, month + 1, 1));
+
+  const dayStr = (d: number) => `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+
+  const selectedApts = selectedDay ? (apptMap[selectedDay] || []) : [];
+
+  return (
+    <div className="bg-white/[0.03] border border-white/[0.08] rounded-2xl p-5">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-white font-semibold">{primaryLabel} Calendar</h3>
+        <div className="flex items-center gap-1">
+          <button onClick={prevMonth} className="p-1.5 hover:bg-white/[0.08] rounded-lg text-gray-400 hover:text-white transition-colors">
+            <ChevronLeft size={15}/>
+          </button>
+          <span className="text-gray-300 text-sm font-medium px-2 min-w-[120px] text-center">{monthLabel}</span>
+          <button onClick={nextMonth} className="p-1.5 hover:bg-white/[0.08] rounded-lg text-gray-400 hover:text-white transition-colors">
+            <ChevronRight size={15}/>
+          </button>
+        </div>
+      </div>
+
+      {/* Day-of-week headers */}
+      <div className="grid grid-cols-7 mb-1">
+        {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d => (
+          <div key={d} className="text-center text-gray-600 text-xs py-1 font-medium">{d}</div>
+        ))}
+      </div>
+
+      {/* Calendar grid */}
+      <div className="grid grid-cols-7 gap-0.5">
+        {/* Empty cells for first week */}
+        {Array.from({ length: firstDow }).map((_,i) => <div key={`e${i}`}/>)}
+        {/* Day cells */}
+        {Array.from({ length: daysInMonth }).map((_, i) => {
+          const d = i + 1;
+          const ds = dayStr(d);
+          const apts = apptMap[ds] || [];
+          const hasApts = apts.length > 0;
+          const isToday = ds === todayStr;
+          const isSelected = ds === selectedDay;
+          return (
+            <button key={d} onClick={() => setSelectedDay(isSelected ? null : ds)}
+              className={`relative aspect-square flex flex-col items-center justify-center rounded-lg text-xs transition-all
+                ${isSelected ? 'bg-blue-600 text-white' :
+                  isToday ? 'bg-white/[0.08] text-white ring-1 ring-blue-500/50' :
+                  hasApts ? 'hover:bg-white/[0.06] text-white cursor-pointer' :
+                  'text-gray-600 hover:bg-white/[0.04] hover:text-gray-400'}`}>
+              <span className="font-medium">{d}</span>
+              {hasApts && !isSelected && (
+                <div className="flex gap-0.5 mt-0.5">
+                  {apts.slice(0,3).map((a,i) => (
+                    <div key={i} className={`w-1 h-1 rounded-full ${
+                      (a.status||'').toLowerCase().includes('confirm') || (a.status||'').toLowerCase().includes('complet') ? 'bg-emerald-400' :
+                      (a.status||'').toLowerCase().includes('cancel') ? 'bg-red-400' : 'bg-amber-400'
+                    }`}/>
+                  ))}
+                </div>
+              )}
+              {hasApts && isSelected && (
+                <div className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-blue-500 rounded-full text-white text-[9px] flex items-center justify-center font-bold z-10">
+                  {apts.length}
+                </div>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Legend */}
+      <div className="flex gap-3 mt-3 pt-3 border-t border-white/[0.06]">
+        {[['bg-emerald-400','Confirmed/Done'],['bg-amber-400','Pending'],['bg-red-400','Cancelled']].map(([col,lbl])=>(
+          <div key={lbl} className="flex items-center gap-1.5">
+            <div className={`w-2 h-2 rounded-full ${col}`}/>
+            <span className="text-gray-600 text-xs">{lbl}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Selected day panel */}
+      {selectedDay && (
+        <div className="mt-4 pt-4 border-t border-white/[0.08]">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-white text-sm font-semibold">
+              {new Date(selectedDay + 'T12:00:00').toLocaleDateString('en-CA', { weekday:'long', month:'long', day:'numeric' })}
+            </p>
+            <div className="flex items-center gap-2">
+              <span className="text-gray-500 text-xs">{selectedApts.length} {primaryLabel.toLowerCase()}</span>
+              <button onClick={()=>setSelectedDay(null)} className="text-gray-600 hover:text-white transition-colors">
+                <X size={13}/>
+              </button>
+            </div>
+          </div>
+          {selectedApts.length === 0 ? (
+            <p className="text-gray-600 text-sm text-center py-3">No {primaryLabel.toLowerCase()} on this day</p>
+          ) : (
+            <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+              {selectedApts.map((a, i) => {
+                const timeRaw = a.time || (a.date?.includes('T') ? a.date.split('T')[1]?.slice(0,5) : '');
+                return (
+                  <div key={i} className="flex items-center gap-3 bg-white/[0.03] rounded-xl px-3 py-2.5">
+                    <div className={`w-2 h-full min-h-[32px] rounded-full shrink-0 ${
+                      (a.status||'').toLowerCase().includes('confirm') || (a.status||'').toLowerCase().includes('complet') ? 'bg-emerald-500' :
+                      (a.status||'').toLowerCase().includes('cancel') ? 'bg-red-500' : 'bg-amber-500'
+                    }`}/>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white text-xs font-medium truncate">{a.patientName||'—'}</p>
+                      <p className="text-gray-500 text-xs">{a.type || '—'}{timeRaw ? ` · ${timeRaw}` : ''}{a.duration ? ` · ${a.duration}min` : ''}</p>
+                    </div>
+                    {a.doctor && <p className="text-gray-500 text-xs shrink-0 truncate max-w-[80px]">{a.doctor}</p>}
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${statusColor(a.status||'')}`}>{a.status||'—'}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -192,10 +350,13 @@ function OverviewTab({ data, userName }: { data: SheetData; userName: string }) 
         </div>
       </div>
 
+      {/* Calendar */}
+      <MiniCalendar appointments={primary} primaryLabel={data.tabLabels?.primary || 'Records'}/>
+
       {/* Doctor breakdown */}
       {topDoctors.length > 0 && (
         <div className="bg-white/[0.03] border border-white/[0.08] rounded-2xl p-5">
-          <h3 className="text-white font-semibold mb-4">Appointments by Doctor</h3>
+          <h3 className="text-white font-semibold mb-4">By Assigned To</h3>
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
             {topDoctors.map(([doc,n])=>(
               <div key={doc} className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-3 text-center">
