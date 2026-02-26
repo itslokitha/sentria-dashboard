@@ -86,7 +86,8 @@ function StatCard({ title, value, sub, icon: Icon, color }: {
 
 // ── Overview Tab ──────────────────────────────────────────────────────────
 function OverviewTab({ data, userName }: { data: SheetData; userName: string }) {
-  const { stats, appointments } = data;
+  const stats = data.stats || { totalPatients: 0, totalAppointments: 0, appointmentsToday: 0, appointmentsThisWeek: 0, appointmentsThisMonth: 0, upcomingCount: 0, flaggedPatients: 0, byStatus: {}, byDoctor: {}, byType: {} };
+  const appointments = data.appointments || [];
   const today = new Date().toISOString().split('T')[0];
   const upcoming = appointments.filter(a => (a.date||'') >= today).slice(0, 8);
   const topDoctors = Object.entries(stats.byDoctor).sort((a,b)=>b[1]-a[1]).slice(0, 5);
@@ -412,11 +413,15 @@ export function ClientAdminDashboard({ userEmail, userName, onLogout }: ClientAd
   const loadData = async () => {
     setLoading(true); setError(null);
     try {
+      const token = getIdToken();
+      if (!token) throw new Error('Session expired. Please sign in again.');
       const res = await fetch(`${API_BASE_URL}/client/sheet-data`, {
-        headers: { Authorization: `Bearer ${getIdToken()}` },
+        headers: { Authorization: `Bearer ${token}` },
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error||`API ${res.status}`);
+      let json: any;
+      try { json = await res.json(); } catch { throw new Error(`Server returned invalid response (${res.status})`); }
+      if (!res.ok) throw new Error(json?.error||`API error ${res.status}`);
+      if (!json || !json.stats) throw new Error('Received empty data from server. The sheet may not be configured yet.');
       setData(json);
       setLastRefresh(new Date());
     } catch(e:any) { setError(e.message||'Failed to load data.'); }
@@ -511,9 +516,16 @@ export function ClientAdminDashboard({ userEmail, userName, onLogout }: ClientAd
             <ErrorState message={error} onRetry={loadData}/>
           ) : data ? (<>
             {activeTab==='overview'     && <OverviewTab     data={data} userName={userName}/>}
-            {activeTab==='appointments' && <AppointmentsTab appointments={data.appointments}/>}
-            {activeTab==='patients'     && <PatientsTab     patients={data.patients}/>}
-          </>) : null}
+            {activeTab==='appointments' && <AppointmentsTab appointments={data.appointments||[]}/>}
+            {activeTab==='patients'     && <PatientsTab     patients={data.patients||[]}/>}
+          </>) : (
+            <div className="flex items-center justify-center h-96">
+              <div className="text-center">
+                <div className="w-12 h-12 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin mx-auto mb-4"/>
+                <p className="text-gray-400 text-sm">Preparing your dashboard…</p>
+              </div>
+            </div>
+          )}
         </div>
       </main>
 
