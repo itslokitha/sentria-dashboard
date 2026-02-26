@@ -411,9 +411,10 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
 // ── Main ──────────────────────────────────────────────────────────────────
 interface ClientAdminDashboardProps {
   userEmail: string; userName: string; onLogout: () => void;
+  clientName?: string; sheetId?: string; readOnly?: boolean;
 }
 
-export function ClientAdminDashboard({ userEmail, userName, onLogout }: ClientAdminDashboardProps) {
+export function ClientAdminDashboard({ userEmail, userName, onLogout, readOnly = false }: ClientAdminDashboardProps) {
   const { getIdToken } = useAuth();
   const [activeTab, setActiveTab]     = useState('overview');
   const [data, setData]               = useState<SheetData|null>(null);
