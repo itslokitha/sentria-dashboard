@@ -1,7 +1,7 @@
 {
   "headers": [
     {
-      "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+      "source": "/(.*)",
       "headers": [
         { "key": "Content-Security-Policy",
           "value": "default-src 'self'; script-src 'self' 'unsafe-inline'; connect-src 'self' https://*.amazonaws.com https://sheets.googleapis.com https://oauth2.googleapis.com; style-src 'self' 'unsafe-inline'" },
@@ -10,5 +10,8 @@
         { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
       ]
     }
+  ],
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
